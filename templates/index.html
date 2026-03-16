@@ -1,0 +1,216 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Log Analyzer — Efraín Rojas Artavia</title>
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=Syne:wght@700;800&display=swap" rel="stylesheet">
+<style>
+  :root { --c1:#FF6B35; --dark:#0D0D0D; --card:#141414; --border:rgba(255,255,255,0.08); --text:#F0EEE8; --muted:#888; }
+  * { margin:0; padding:0; box-sizing:border-box; }
+  body { background:var(--dark); color:var(--text); font-family:'Space Grotesk',sans-serif; font-size:14px; line-height:1.6; }
+  nav { background:rgba(13,13,13,0.95); border-bottom:1px solid var(--border); padding:14px 32px; display:flex; align-items:center; justify-content:space-between; position:sticky; top:0; z-index:50; }
+  .logo { font-family:'Syne',sans-serif; font-size:18px; font-weight:800; }
+  .logo span { color:var(--c1); }
+  .back { color:var(--muted); text-decoration:none; font-size:13px; transition:color .2s; }
+  .back:hover { color:var(--text); }
+  .hero { padding:48px 32px 32px; max-width:1100px; margin:0 auto; }
+  h1 { font-family:'Syne',sans-serif; font-size:clamp(28px,4vw,42px); font-weight:800; letter-spacing:-1px; margin-bottom:8px; }
+  h1 span { color:var(--c1); }
+  .subtitle { color:var(--muted); font-size:15px; margin-bottom:32px; }
+  .main { display:grid; grid-template-columns:1fr 1fr; gap:20px; max-width:1100px; margin:0 auto; padding:0 32px 48px; }
+  @media(max-width:768px) { .main { grid-template-columns:1fr; } }
+  .panel { background:var(--card); border:1px solid var(--border); border-radius:14px; padding:24px; }
+  .panel-title { font-weight:600; font-size:15px; margin-bottom:16px; display:flex; align-items:center; gap:8px; }
+  .panel-title span { font-size:18px; }
+  textarea {
+    width:100%; height:280px; background:rgba(255,255,255,0.04);
+    border:1px solid var(--border); border-radius:8px;
+    color:var(--text); font-family:'Space Grotesk',sans-serif;
+    font-size:12px; padding:12px; resize:vertical; outline:none;
+    transition:border-color .2s; line-height:1.5;
+  }
+  textarea:focus { border-color:rgba(255,107,53,0.5); }
+  .btn-row { display:flex; gap:10px; margin-top:12px; }
+  button {
+    padding:10px 20px; border-radius:8px; border:none; cursor:pointer;
+    font-family:'Space Grotesk',sans-serif; font-size:13px; font-weight:600;
+    transition:all .2s;
+  }
+  .btn-primary { background:var(--c1); color:#fff; flex:1; }
+  .btn-primary:hover { background:#ff4d1a; }
+  .btn-primary:disabled { opacity:.5; cursor:not-allowed; }
+  .btn-secondary { background:rgba(255,255,255,0.06); color:var(--muted); border:1px solid var(--border); }
+  .btn-secondary:hover { color:var(--text); border-color:rgba(255,255,255,0.2); }
+
+  /* Stats */
+  .stats-grid { display:grid; grid-template-columns:repeat(2,1fr); gap:10px; margin-bottom:16px; }
+  .stat-card { background:rgba(255,255,255,0.03); border:1px solid var(--border); border-radius:10px; padding:12px 16px; }
+  .stat-val { font-family:'Syne',sans-serif; font-size:24px; font-weight:800; }
+  .stat-lbl { font-size:11px; color:var(--muted); text-transform:uppercase; letter-spacing:.5px; }
+  .stat-total   .stat-val { color:var(--c1); }
+  .stat-critical .stat-val { color:#f87171; }
+  .stat-warning  .stat-val { color:#fbbf24; }
+  .stat-anomaly  .stat-val { color:#a78bfa; }
+
+  /* Events list */
+  .events-list { display:flex; flex-direction:column; gap:6px; max-height:400px; overflow-y:auto; }
+  .event-item { background:rgba(255,255,255,0.03); border-radius:8px; padding:10px 12px; border-left:3px solid transparent; }
+  .event-item.CRITICAL { border-left-color:#f87171; }
+  .event-item.WARNING  { border-left-color:#fbbf24; }
+  .event-item.ERROR    { border-left-color:#fb923c; }
+  .event-type { font-weight:600; font-size:12px; margin-bottom:2px; }
+  .event-line { font-size:11px; color:var(--muted); font-family:monospace; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  .badge { display:inline-block; padding:1px 8px; border-radius:4px; font-size:10px; font-weight:700; margin-left:6px; }
+  .badge-CRITICAL { background:rgba(248,113,113,0.15); color:#f87171; }
+  .badge-WARNING  { background:rgba(251,191,36,0.15);  color:#fbbf24; }
+  .badge-ERROR    { background:rgba(251,146,60,0.15);  color:#fb923c; }
+
+  /* Anomalies */
+  .anomaly-item { background:rgba(255,255,255,0.03); border-radius:8px; padding:12px 14px; border:1px solid rgba(255,255,255,0.06); margin-bottom:8px; }
+  .anomaly-item.CRITICAL { border-color:rgba(248,113,113,0.25); background:rgba(248,113,113,0.05); }
+  .anomaly-item.WARNING  { border-color:rgba(251,191,36,0.25);  background:rgba(251,191,36,0.05); }
+  .anomaly-msg { font-size:13px; font-weight:500; }
+  .anomaly-sub { font-size:12px; color:var(--muted); margin-top:2px; }
+
+  .empty { text-align:center; color:var(--muted); padding:40px 20px; font-size:13px; }
+  .loading { text-align:center; color:var(--c1); padding:20px; font-size:13px; }
+
+  ::-webkit-scrollbar { width:4px; }
+  ::-webkit-scrollbar-thumb { background:rgba(255,255,255,0.1); border-radius:2px; }
+</style>
+</head>
+<body>
+
+<nav>
+  <div class="logo">log<span>.</span>analyzer</div>
+  <a class="back" href="https://efrabuilder.github.io">← Back to portfolio</a>
+</nav>
+
+<div class="hero">
+  <h1>🔍 Log <span>Analyzer</span></h1>
+  <p class="subtitle">Paste network device logs to detect anomalies, classify events by severity and identify threats.</p>
+</div>
+
+<div class="main">
+  <!-- Input Panel -->
+  <div class="panel">
+    <div class="panel-title"><span>📋</span> Log Input</div>
+    <textarea id="logInput" placeholder="Paste your network device logs here...
+Example:
+Mar 15 08:01:22 router-01 %LINK-3-UPDOWN: Interface GigabitEthernet0/1, changed state to down
+Mar 15 08:02:10 router-01 %CPU-4-HIGH: CPU utilization: 92%
+Mar 15 08:03:00 router-01 Authentication failure for user admin from 192.168.1.50"></textarea>
+    <div class="btn-row">
+      <button class="btn-primary" id="analyzeBtn" onclick="analyze()">⚡ Analyze Logs</button>
+      <button class="btn-secondary" onclick="loadSample()">Load Sample</button>
+      <button class="btn-secondary" onclick="clearAll()">Clear</button>
+    </div>
+  </div>
+
+  <!-- Results Panel -->
+  <div class="panel">
+    <div class="panel-title"><span>📊</span> Results</div>
+    <div id="results">
+      <div class="empty">Paste logs and click Analyze to see results.</div>
+    </div>
+  </div>
+</div>
+
+<script>
+async function analyze() {
+  const text = document.getElementById('logInput').value.trim();
+  if (!text) { alert('Please paste some log text first.'); return; }
+
+  const btn = document.getElementById('analyzeBtn');
+  btn.disabled = true;
+  btn.textContent = 'Analyzing...';
+  document.getElementById('results').innerHTML = '<div class="loading">⚡ Analyzing logs...</div>';
+
+  try {
+    const res = await fetch('/api/analyze', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ log_text: text })
+    });
+    const data = await res.json();
+    renderResults(data);
+  } catch(e) {
+    document.getElementById('results').innerHTML = '<div class="empty">Error analyzing logs. Please try again.</div>';
+  } finally {
+    btn.disabled = false;
+    btn.textContent = '⚡ Analyze Logs';
+  }
+}
+
+function renderResults(data) {
+  const { stats, anomalies, events } = data;
+  let html = `
+    <div class="stats-grid">
+      <div class="stat-card stat-total">
+        <div class="stat-val">${stats.total}</div>
+        <div class="stat-lbl">Total Events</div>
+      </div>
+      <div class="stat-card stat-critical">
+        <div class="stat-val">${stats.critical}</div>
+        <div class="stat-lbl">Critical</div>
+      </div>
+      <div class="stat-card stat-warning">
+        <div class="stat-val">${stats.warning}</div>
+        <div class="stat-lbl">Warnings</div>
+      </div>
+      <div class="stat-card stat-anomaly">
+        <div class="stat-val">${stats.anomalies_count}</div>
+        <div class="stat-lbl">Anomalies</div>
+      </div>
+    </div>`;
+
+  if (anomalies.length > 0) {
+    html += `<div style="font-weight:600;font-size:13px;margin-bottom:10px;color:#f0eee8;">⚠ Anomalies Detected</div>`;
+    anomalies.forEach(a => {
+      html += `<div class="anomaly-item ${a.severity}">
+        <div class="anomaly-msg">${a.message}</div>
+        <div class="anomaly-sub">Severity: ${a.severity} · Threshold: ${a.threshold}</div>
+      </div>`;
+    });
+  } else {
+    html += `<div class="anomaly-item" style="border-color:rgba(52,211,153,0.25);background:rgba(52,211,153,0.05);">
+      <div class="anomaly-msg" style="color:#34d399;">✓ No anomalies detected</div>
+    </div>`;
+  }
+
+  html += `<div style="font-weight:600;font-size:13px;margin:14px 0 10px;color:#f0eee8;">📋 Events (${events.length})</div>
+    <div class="events-list">`;
+
+  if (events.length === 0) {
+    html += `<div class="empty">No events matched known patterns.</div>`;
+  } else {
+    events.slice(0, 50).forEach(e => {
+      html += `<div class="event-item ${e.severity}">
+        <div class="event-type">${e.event_type.replace(/_/g,' ').replace(/\b\w/g,c=>c.toUpperCase())}
+          <span class="badge badge-${e.severity}">${e.severity}</span>
+        </div>
+        <div class="event-line">${e.raw_line}</div>
+      </div>`;
+    });
+    if (events.length > 50) {
+      html += `<div class="empty">...and ${events.length - 50} more events</div>`;
+    }
+  }
+  html += '</div>';
+  document.getElementById('results').innerHTML = html;
+}
+
+async function loadSample() {
+  const res = await fetch('/api/sample');
+  const data = await res.json();
+  document.getElementById('logInput').value = data.log_text;
+}
+
+function clearAll() {
+  document.getElementById('logInput').value = '';
+  document.getElementById('results').innerHTML = '<div class="empty">Paste logs and click Analyze to see results.</div>';
+}
+</script>
+</body>
+</html>
