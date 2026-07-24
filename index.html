@@ -1,0 +1,552 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Log Analyzer — network log parsing &amp; anomaly detection</title>
+<meta name="description" content="Python CLI tool that parses network device logs, detects anomalies and sends email alerts when thresholds are exceeded.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --bg:#0A0E14;
+    --panel:#10151D;
+    --panel-2:#151B25;
+    --border:#1F2733;
+    --border-strong:#2A3444;
+    --text:#E3E8EF;
+    --text-muted:#7D8899;
+    --critical:#F0546B;
+    --critical-bg:#2A1219;
+    --warning:#E8A33D;
+    --warning-bg:#2A2010;
+    --ok:#4FBF8B;
+    --ok-bg:#0F241C;
+    --info:#5B8DEF;
+    --info-bg:#101A2E;
+    --radius:6px;
+    --mono:'IBM Plex Mono', ui-monospace, SFMono-Regular, Menlo, monospace;
+    --sans:'IBM Plex Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  }
+  [data-theme="light"]{
+    --bg:#F3F5F8;
+    --panel:#FFFFFF;
+    --panel-2:#F8F9FB;
+    --border:#DEE3EA;
+    --border-strong:#C7D0DB;
+    --text:#101720;
+    --text-muted:#5B6472;
+    --critical:#C93A50;
+    --critical-bg:#FBE9EC;
+    --warning:#A66A0A;
+    --warning-bg:#FBF1DF;
+    --ok:#1F8F63;
+    --ok-bg:#E7F5EF;
+    --info:#2E63C7;
+    --info-bg:#E9F0FC;
+  }
+  *{box-sizing:border-box;}
+  html{scroll-behavior:smooth;}
+  body{
+    margin:0;
+    background:var(--bg);
+    color:var(--text);
+    font-family:var(--sans);
+    font-size:16px;
+    line-height:1.6;
+    transition:background .2s ease, color .2s ease;
+  }
+  a{color:var(--info);}
+  .wrap{max-width:960px;margin:0 auto;padding:0 24px;}
+
+  /* topbar */
+  .topbar{
+    position:sticky;top:0;z-index:20;
+    background:color-mix(in srgb, var(--bg) 88%, transparent);
+    backdrop-filter:blur(8px);
+    border-bottom:1px solid var(--border);
+  }
+  .topbar-inner{
+    max-width:960px;margin:0 auto;padding:14px 24px;
+    display:flex;align-items:center;justify-content:space-between;
+  }
+  .brand{
+    display:flex;align-items:center;gap:8px;
+    font-family:var(--mono);font-weight:600;font-size:14px;letter-spacing:.02em;
+  }
+  .brand .dot{width:8px;height:8px;border-radius:50%;background:var(--ok);flex:none;}
+  .controls{display:flex;gap:8px;}
+  .ctrl-btn{
+    font-family:var(--mono);font-size:12px;
+    background:var(--panel);border:1px solid var(--border);color:var(--text-muted);
+    border-radius:var(--radius);padding:6px 10px;cursor:pointer;
+  }
+  .ctrl-btn:hover{border-color:var(--border-strong);color:var(--text);}
+  .ctrl-btn.active{color:var(--text);border-color:var(--border-strong);}
+
+  /* hero */
+  .hero{padding:64px 0 40px;}
+  .eyebrow{
+    font-family:var(--mono);font-size:12px;color:var(--text-muted);
+    text-transform:uppercase;letter-spacing:.08em;margin:0 0 14px;
+  }
+  h1{
+    font-family:var(--mono);font-weight:600;
+    font-size:clamp(28px,4vw,42px);line-height:1.15;letter-spacing:-.01em;
+    margin:0 0 16px;
+  }
+  .lede{
+    font-size:17px;color:var(--text-muted);max-width:52ch;margin:0 0 28px;
+  }
+  .hero-ctas{display:flex;gap:10px;flex-wrap:wrap;margin-bottom:44px;}
+  .btn{
+    font-family:var(--mono);font-size:13px;font-weight:500;
+    padding:11px 18px;border-radius:var(--radius);text-decoration:none;
+    display:inline-flex;align-items:center;gap:8px;border:1px solid transparent;
+    cursor:pointer;
+  }
+  .btn-primary{background:var(--ok);color:#04241A;}
+  .btn-secondary{background:transparent;border-color:var(--border-strong);color:var(--text);}
+  .btn-secondary:hover{background:var(--panel-2);}
+
+  /* terminal */
+  .terminal{
+    background:var(--panel);border:1px solid var(--border);border-radius:8px;
+    overflow:hidden;
+  }
+  .terminal-head{
+    display:flex;align-items:center;gap:8px;padding:10px 14px;
+    border-bottom:1px solid var(--border);background:var(--panel-2);
+  }
+  .terminal-head span{width:10px;height:10px;border-radius:50%;background:var(--border-strong);}
+  .terminal-title{
+    font-family:var(--mono);font-size:12px;color:var(--text-muted);margin-left:6px;
+  }
+  .terminal-body{
+    font-family:var(--mono);font-size:13px;line-height:1.65;
+    padding:18px 20px;min-height:290px;white-space:pre-wrap;word-break:break-word;
+  }
+  .tl{opacity:0;animation:tl-in .25s ease forwards;}
+  @keyframes tl-in{to{opacity:1;}}
+  .tag{font-weight:600;padding:1px 6px;border-radius:3px;font-size:12px;}
+  .tag-critical{color:var(--critical);background:var(--critical-bg);}
+  .tag-warning{color:var(--warning);background:var(--warning-bg);}
+  .tag-ok{color:var(--ok);background:var(--ok-bg);}
+  .muted{color:var(--text-muted);}
+  .cursor{display:inline-block;width:7px;height:14px;background:var(--text-muted);vertical-align:-2px;animation:blink 1s step-start infinite;}
+  @keyframes blink{50%{opacity:0;}}
+
+  section{padding:44px 0;border-top:1px solid var(--border);}
+  h2{
+    font-family:var(--mono);font-weight:600;font-size:20px;margin:0 0 8px;
+  }
+  .section-sub{color:var(--text-muted);margin:0 0 28px;max-width:60ch;}
+
+  /* feature grid */
+  .grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(230px,1fr));gap:14px;}
+  .card{
+    background:var(--panel);border:1px solid var(--border);border-radius:var(--radius);
+    padding:18px;
+  }
+  .card-tag{
+    font-family:var(--mono);font-size:11px;color:var(--text-muted);
+    text-transform:uppercase;letter-spacing:.06em;margin:0 0 8px;
+  }
+  .card p{margin:0;font-size:14.5px;}
+  .card p.title{font-weight:500;margin-bottom:6px;font-size:15px;}
+
+  /* status board */
+  table{width:100%;border-collapse:collapse;font-size:14px;}
+  th,td{
+    text-align:left;padding:10px 12px;border-bottom:1px solid var(--border);
+  }
+  th{
+    font-family:var(--mono);font-size:11px;color:var(--text-muted);
+    text-transform:uppercase;letter-spacing:.06em;font-weight:500;
+  }
+  td{font-family:var(--mono);}
+  td.event{font-family:var(--sans);}
+  .status-table{background:var(--panel);border:1px solid var(--border);border-radius:8px;overflow:hidden;}
+  .status-table table{padding:0 6px;}
+  .status-table th,.status-table td{border-color:var(--border);}
+  .status-table tr:last-child td{border-bottom:none;}
+
+  /* quickstart */
+  .code-block{
+    background:var(--panel);border:1px solid var(--border);border-radius:var(--radius);
+    font-family:var(--mono);font-size:13px;padding:16px 18px;position:relative;
+    overflow-x:auto;
+  }
+  .code-block pre{margin:0;white-space:pre;}
+  .code-line{color:var(--text);}
+  .code-comment{color:var(--text-muted);}
+  .copy-btn{
+    position:absolute;top:10px;right:10px;
+    font-family:var(--mono);font-size:11px;
+    background:var(--panel-2);border:1px solid var(--border);color:var(--text-muted);
+    border-radius:4px;padding:4px 8px;cursor:pointer;
+  }
+  .copy-btn:hover{color:var(--text);border-color:var(--border-strong);}
+  .steps{display:flex;flex-direction:column;gap:14px;margin-top:20px;}
+  .step{display:flex;gap:14px;align-items:flex-start;}
+  .step-n{
+    font-family:var(--mono);font-size:12px;color:var(--text-muted);
+    border:1px solid var(--border);border-radius:50%;width:22px;height:22px;
+    display:flex;align-items:center;justify-content:center;flex:none;margin-top:2px;
+  }
+  .step p{margin:0;font-size:14.5px;}
+  .step code{
+    background:var(--panel-2);border:1px solid var(--border);border-radius:4px;
+    padding:1px 6px;font-family:var(--mono);font-size:13px;
+  }
+
+  footer{padding:36px 0 60px;border-top:1px solid var(--border);}
+  .footer-row{
+    display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:12px;
+    font-size:13px;color:var(--text-muted);
+  }
+  .footer-row a{color:var(--text-muted);text-decoration:none;}
+  .footer-row a:hover{color:var(--text);}
+
+  @media (prefers-reduced-motion: reduce){
+    .tl{animation:none;opacity:1;}
+    .cursor{animation:none;}
+  }
+  @media (max-width:640px){
+    .hero{padding:44px 0 28px;}
+    section{padding:32px 0;}
+  }
+</style>
+</head>
+<body data-theme="dark" data-lang="en">
+
+<div class="topbar">
+  <div class="topbar-inner">
+    <div class="brand"><span class="dot" aria-hidden="true"></span>log-analyzer</div>
+    <div class="controls">
+      <button class="ctrl-btn" id="lang-toggle" type="button">ES</button>
+      <button class="ctrl-btn" id="theme-toggle" type="button">☾</button>
+    </div>
+  </div>
+</div>
+
+<div class="wrap">
+
+  <section class="hero" style="border-top:none;padding-top:64px;">
+    <p class="eyebrow" data-i18n="eyebrow">Python CLI · network operations</p>
+    <h1 data-i18n="h1">Log Analyzer</h1>
+    <p class="lede" data-i18n="lede">Parses router, switch and firewall logs, flags anomalies against configurable thresholds, and emails you before they become an outage.</p>
+    <div class="hero-ctas">
+      <a class="btn btn-primary" href="https://github.com/efrabuilder/log-analyzer" data-i18n="cta-repo">View repository</a>
+      <a class="btn btn-secondary" href="#quickstart" data-i18n="cta-quickstart">Quick start</a>
+    </div>
+
+    <div class="terminal" role="img" aria-label="Simulated log analyzer terminal output">
+      <div class="terminal-head">
+        <span></span><span></span><span></span>
+        <span class="terminal-title">py log_analyzer.py</span>
+      </div>
+      <div class="terminal-body" id="term-body"></div>
+    </div>
+  </section>
+
+  <section id="features">
+    <h2 data-i18n="feat-h2">What it does</h2>
+    <p class="section-sub" data-i18n="feat-sub">Six things, done well, instead of a hundred half-finished ones.</p>
+    <div class="grid">
+      <div class="card">
+        <p class="card-tag" data-i18n="feat1-tag">Parsing</p>
+        <p class="title" data-i18n="feat1-title">Multi-vendor log parsing</p>
+        <p data-i18n="feat1-body">Reads router, switch and firewall log files without extra configuration.</p>
+      </div>
+      <div class="card">
+        <p class="card-tag" data-i18n="feat2-tag">Detection</p>
+        <p class="title" data-i18n="feat2-title">Seven event types</p>
+        <p data-i18n="feat2-body">Interface down, high CPU, auth failures, link flaps, memory warnings, and BGP/OSPF drops.</p>
+      </div>
+      <div class="card">
+        <p class="card-tag" data-i18n="feat3-tag">Tuning</p>
+        <p class="title" data-i18n="feat3-title">Configurable thresholds</p>
+        <p data-i18n="feat3-body">Set how many occurrences of each event type count as an anomaly.</p>
+      </div>
+      <div class="card">
+        <p class="card-tag" data-i18n="feat4-tag">Reporting</p>
+        <p class="title" data-i18n="feat4-title">Color-coded Excel export</p>
+        <p data-i18n="feat4-body">Events and anomalies land in separate sheets, ready to share with the team.</p>
+      </div>
+      <div class="card">
+        <p class="card-tag" data-i18n="feat5-tag">Alerting</p>
+        <p class="title" data-i18n="feat5-title">Email alerts</p>
+        <p data-i18n="feat5-body">Sends a summary the moment an anomaly crosses its threshold.</p>
+      </div>
+      <div class="card">
+        <p class="card-tag" data-i18n="feat6-tag">Interface</p>
+        <p class="title" data-i18n="feat6-title">Clean CLI</p>
+        <p data-i18n="feat6-body">Analyze a folder, specific files, or a directory with a single argument.</p>
+      </div>
+    </div>
+  </section>
+
+  <section id="events">
+    <h2 data-i18n="events-h2">Detected events</h2>
+    <p class="section-sub" data-i18n="events-sub">Default thresholds — override any of them per deployment.</p>
+    <div class="status-table">
+      <table>
+        <thead>
+          <tr><th data-i18n="events-col1">Event</th><th data-i18n="events-col2">Default threshold</th></tr>
+        </thead>
+        <tbody>
+          <tr><td class="event">Interface down</td><td><span class="tag tag-critical">2 <span data-i18n="occ">occurrences</span></span></td></tr>
+          <tr><td class="event" data-i18n="ev-cpu">High CPU (&gt;85%)</td><td><span class="tag tag-critical">3 <span data-i18n="occ">occurrences</span></span></td></tr>
+          <tr><td class="event" data-i18n="ev-auth">Auth failures</td><td><span class="tag tag-warning">5 <span data-i18n="occ">occurrences</span></span></td></tr>
+          <tr><td class="event" data-i18n="ev-flap">Link flap</td><td><span class="tag tag-warning">3 <span data-i18n="occ">occurrences</span></span></td></tr>
+          <tr><td class="event" data-i18n="ev-mem">Memory warning</td><td><span class="tag tag-warning">2 <span data-i18n="occ">occurrences</span></span></td></tr>
+          <tr><td class="event" data-i18n="ev-ospf">OSPF neighbor down</td><td><span class="tag tag-critical">1 <span data-i18n="occ1">occurrence</span></span></td></tr>
+          <tr><td class="event" data-i18n="ev-bgp">BGP session drop</td><td><span class="tag tag-critical">1 <span data-i18n="occ1">occurrence</span></span></td></tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <section id="quickstart">
+    <h2 data-i18n="qs-h2">Quick start</h2>
+    <p class="section-sub" data-i18n="qs-sub">From clone to first report in four steps.</p>
+    <div class="code-block">
+      <button class="copy-btn" id="copy-btn" type="button" data-i18n="copy-btn">Copy</button>
+      <pre id="qs-code"><span class="code-comment"># 1. Clone</span>
+<span class="code-line">git clone https://github.com/efrabuilder/log-analyzer.git</span>
+<span class="code-line">cd log-analyzer</span>
+
+<span class="code-comment"># 2. Install</span>
+<span class="code-line">py -m pip install -r requirements.txt</span>
+
+<span class="code-comment"># 3. Generate sample logs</span>
+<span class="code-line">py generate_sample_logs.py</span>
+
+<span class="code-comment"># 4. Run</span>
+<span class="code-line">py log_analyzer.py</span></pre>
+    </div>
+
+    <div class="steps">
+      <div class="step">
+        <span class="step-n">1</span>
+        <p data-i18n="step1"><code>py log_analyzer.py</code> — analyze the <code>logs/</code> folder, the default.</p>
+      </div>
+      <div class="step">
+        <span class="step-n">2</span>
+        <p data-i18n="step2"><code>py log_analyzer.py router.log switch.log</code> — analyze specific files.</p>
+      </div>
+      <div class="step">
+        <span class="step-n">3</span>
+        <p data-i18n="step3"><code>py log_analyzer.py --dir /var/log/network</code> — point it at any directory.</p>
+      </div>
+      <div class="step">
+        <span class="step-n">4</span>
+        <p data-i18n="step4"><code>py log_analyzer.py --summary --no-email</code> — print a summary and skip alerts.</p>
+      </div>
+    </div>
+  </section>
+
+  <section id="stack">
+    <h2 data-i18n="stack-h2">Tech stack</h2>
+    <p class="section-sub" data-i18n="stack-sub">Five standard-library-adjacent tools, nothing exotic.</p>
+    <div class="status-table">
+      <table>
+        <thead>
+          <tr><th data-i18n="stack-col1">Tool</th><th data-i18n="stack-col2">Purpose</th></tr>
+        </thead>
+        <tbody>
+          <tr><td class="event"><code>re</code></td><td data-i18n="stack1">Regex log parsing</td></tr>
+          <tr><td class="event"><code>pandas</code></td><td data-i18n="stack2">Data processing</td></tr>
+          <tr><td class="event"><code>openpyxl</code></td><td data-i18n="stack3">Excel report</td></tr>
+          <tr><td class="event"><code>smtplib</code></td><td data-i18n="stack4">Email alerts</td></tr>
+          <tr><td class="event"><code>argparse</code></td><td data-i18n="stack5">CLI interface</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <footer>
+    <div class="footer-row">
+      <span data-i18n="footer-left">MIT license · built by Efraín Rojas Artavia</span>
+      <a href="https://github.com/efrabuilder/log-analyzer" data-i18n="footer-right">github.com/efrabuilder/log-analyzer</a>
+    </div>
+  </footer>
+
+</div>
+
+<script>
+(function(){
+  var i18n = {
+    en: {
+      eyebrow: "Python CLI · network operations",
+      h1: "Log Analyzer",
+      lede: "Parses router, switch and firewall logs, flags anomalies against configurable thresholds, and emails you before they become an outage.",
+      "cta-repo": "View repository",
+      "cta-quickstart": "Quick start",
+      "feat-h2": "What it does",
+      "feat-sub": "Six things, done well, instead of a hundred half-finished ones.",
+      "feat1-tag":"Parsing","feat1-title":"Multi-vendor log parsing","feat1-body":"Reads router, switch and firewall log files without extra configuration.",
+      "feat2-tag":"Detection","feat2-title":"Seven event types","feat2-body":"Interface down, high CPU, auth failures, link flaps, memory warnings, and BGP/OSPF drops.",
+      "feat3-tag":"Tuning","feat3-title":"Configurable thresholds","feat3-body":"Set how many occurrences of each event type count as an anomaly.",
+      "feat4-tag":"Reporting","feat4-title":"Color-coded Excel export","feat4-body":"Events and anomalies land in separate sheets, ready to share with the team.",
+      "feat5-tag":"Alerting","feat5-title":"Email alerts","feat5-body":"Sends a summary the moment an anomaly crosses its threshold.",
+      "feat6-tag":"Interface","feat6-title":"Clean CLI","feat6-body":"Analyze a folder, specific files, or a directory with a single argument.",
+      "events-h2": "Detected events",
+      "events-sub": "Default thresholds — override any of them per deployment.",
+      "events-col1":"Event","events-col2":"Default threshold",
+      "ev-cpu":"High CPU (>85%)","ev-auth":"Auth failures","ev-flap":"Link flap","ev-mem":"Memory warning","ev-ospf":"OSPF neighbor down","ev-bgp":"BGP session drop",
+      "occ":"occurrences","occ1":"occurrence",
+      "qs-h2": "Quick start",
+      "qs-sub": "From clone to first report in four steps.",
+      "copy-btn": "Copy",
+      "step1": '<code>py log_analyzer.py</code> — analyze the <code>logs/</code> folder, the default.',
+      "step2": '<code>py log_analyzer.py router.log switch.log</code> — analyze specific files.',
+      "step3": '<code>py log_analyzer.py --dir /var/log/network</code> — point it at any directory.',
+      "step4": '<code>py log_analyzer.py --summary --no-email</code> — print a summary and skip alerts.',
+      "stack-h2": "Tech stack",
+      "stack-sub": "Five standard-library-adjacent tools, nothing exotic.",
+      "stack-col1":"Tool","stack-col2":"Purpose",
+      "stack1":"Regex log parsing","stack2":"Data processing","stack3":"Excel report","stack4":"Email alerts","stack5":"CLI interface",
+      "footer-left": "MIT license · built by Efraín Rojas Artavia",
+      "footer-right": "github.com/efrabuilder/log-analyzer"
+    },
+    es: {
+      eyebrow: "CLI en Python · operaciones de red",
+      h1: "Log Analyzer",
+      lede: "Analiza logs de routers, switches y firewalls, detecta anomalías según umbrales configurables y te avisa por correo antes de que se conviertan en una caída del servicio.",
+      "cta-repo": "Ver repositorio",
+      "cta-quickstart": "Inicio rápido",
+      "feat-h2": "Qué hace",
+      "feat-sub": "Seis cosas bien hechas, en vez de cien a medias.",
+      "feat1-tag":"Parsing","feat1-title":"Lectura multi-vendor","feat1-body":"Lee logs de routers, switches y firewalls sin configuración adicional.",
+      "feat2-tag":"Detección","feat2-title":"Siete tipos de eventos","feat2-body":"Interfaz caída, CPU alta, fallos de autenticación, link flaps, avisos de memoria y caídas de BGP/OSPF.",
+      "feat3-tag":"Ajuste","feat3-title":"Umbrales configurables","feat3-body":"Define cuántas ocurrencias de cada evento cuentan como anomalía.",
+      "feat4-tag":"Reportes","feat4-title":"Exportación a Excel con colores","feat4-body":"Eventos y anomalías quedan en hojas separadas, listas para compartir con el equipo.",
+      "feat5-tag":"Alertas","feat5-title":"Alertas por correo","feat5-body":"Envía un resumen en cuanto una anomalía supera su umbral.",
+      "feat6-tag":"Interfaz","feat6-title":"CLI simple","feat6-body":"Analiza una carpeta, archivos específicos o un directorio con un solo argumento.",
+      "events-h2": "Eventos detectados",
+      "events-sub": "Umbrales por defecto — se pueden ajustar según cada despliegue.",
+      "events-col1":"Evento","events-col2":"Umbral por defecto",
+      "ev-cpu":"CPU alta (>85%)","ev-auth":"Fallos de autenticación","ev-flap":"Link flap","ev-mem":"Aviso de memoria","ev-ospf":"Vecino OSPF caído","ev-bgp":"Caída de sesión BGP",
+      "occ":"ocurrencias","occ1":"ocurrencia",
+      "qs-h2": "Inicio rápido",
+      "qs-sub": "Del clonado al primer reporte en cuatro pasos.",
+      "copy-btn": "Copiar",
+      "step1": '<code>py log_analyzer.py</code> — analiza la carpeta <code>logs/</code>, la opción por defecto.',
+      "step2": '<code>py log_analyzer.py router.log switch.log</code> — analiza archivos específicos.',
+      "step3": '<code>py log_analyzer.py --dir /var/log/network</code> — apunta a cualquier directorio.',
+      "step4": '<code>py log_analyzer.py --summary --no-email</code> — imprime un resumen sin enviar alertas.',
+      "stack-h2": "Stack técnico",
+      "stack-sub": "Cinco herramientas cercanas a la librería estándar, nada exótico.",
+      "stack-col1":"Herramienta","stack-col2":"Función",
+      "stack1":"Parsing con regex","stack2":"Procesamiento de datos","stack3":"Reporte en Excel","stack4":"Alertas por correo","stack5":"Interfaz de línea de comandos",
+      "footer-left": "Licencia MIT · creado por Efraín Rojas Artavia",
+      "footer-right": "github.com/efrabuilder/log-analyzer"
+    }
+  };
+
+  var body = document.body;
+  var langBtn = document.getElementById('lang-toggle');
+  var themeBtn = document.getElementById('theme-toggle');
+
+  function applyLang(lang){
+    var dict = i18n[lang];
+    document.querySelectorAll('[data-i18n]').forEach(function(el){
+      var key = el.getAttribute('data-i18n');
+      if(dict[key] !== undefined){
+        el.innerHTML = dict[key];
+      }
+    });
+    body.setAttribute('data-lang', lang);
+    langBtn.textContent = lang === 'en' ? 'ES' : 'EN';
+    document.documentElement.setAttribute('lang', lang);
+  }
+
+  function applyTheme(theme){
+    body.setAttribute('data-theme', theme);
+    themeBtn.textContent = theme === 'dark' ? '☾' : '☀';
+  }
+
+  langBtn.addEventListener('click', function(){
+    var next = body.getAttribute('data-lang') === 'en' ? 'es' : 'en';
+    applyLang(next);
+  });
+  themeBtn.addEventListener('click', function(){
+    var next = body.getAttribute('data-theme') === 'dark' ? 'light' : 'dark';
+    applyTheme(next);
+  });
+
+  applyLang('en');
+  applyTheme('dark');
+
+  var copyBtn = document.getElementById('copy-btn');
+  copyBtn.addEventListener('click', function(){
+    var text = document.getElementById('qs-code').innerText;
+    navigator.clipboard && navigator.clipboard.writeText(text).then(function(){
+      var lang = body.getAttribute('data-lang');
+      var original = copyBtn.textContent;
+      copyBtn.textContent = lang === 'en' ? 'Copied' : 'Copiado';
+      setTimeout(function(){ copyBtn.textContent = original; }, 1500);
+    });
+  });
+
+  var lines = [
+    {html:'══════════════════════════════════════════════════', cls:'muted'},
+    {html:'&nbsp; LOG ANALYZER &mdash; SUMMARY', cls:''},
+    {html:'══════════════════════════════════════════════════', cls:'muted'},
+    {html:'&nbsp; Log files analyzed &nbsp;: 2', cls:'muted'},
+    {html:'&nbsp; Total events &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; : 31', cls:'muted'},
+    {html:'&nbsp; <span class="tag tag-critical">CRITICAL</span> &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; : 8', cls:''},
+    {html:'&nbsp; <span class="tag tag-warning">WARNING</span> &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; : 14', cls:''},
+    {html:'&nbsp; Anomalies detected : 5', cls:'muted'},
+    {html:'══════════════════════════════════════════════════', cls:'muted'},
+    {html:'', cls:''},
+    {html:'ANOMALIES:', cls:''},
+    {html:'&nbsp; <span class="tag tag-critical">CRITICAL</span> Interface Down occurred 6x (threshold: 2)', cls:''},
+    {html:'&nbsp; <span class="tag tag-critical">CRITICAL</span> Bgp Session Drop occurred 2x (threshold: 1)', cls:''},
+    {html:'&nbsp; <span class="tag tag-warning">WARNING</span> &nbsp;Authentication Failure occurred 8x (threshold: 5)', cls:''},
+    {html:'&nbsp; <span class="tag tag-critical">CRITICAL</span> High Cpu: 95% on router-cr-01 (limit: 85%)', cls:''}
+  ];
+
+  var termBody = document.getElementById('term-body');
+  var reduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+  function renderStatic(){
+    termBody.innerHTML = lines.map(function(l){
+      return '<div class="tl ' + l.cls + '">' + (l.html || '&nbsp;') + '</div>';
+    }).join('');
+  }
+
+  function typeLines(){
+    termBody.innerHTML = '';
+    var i = 0;
+    function next(){
+      if(i >= lines.length){
+        var cur = document.createElement('div');
+        cur.innerHTML = '<span class="cursor"></span>';
+        termBody.appendChild(cur);
+        return;
+      }
+      var l = lines[i];
+      var div = document.createElement('div');
+      div.className = 'tl ' + l.cls;
+      div.innerHTML = l.html || '&nbsp;';
+      termBody.appendChild(div);
+      i++;
+      setTimeout(next, 90);
+    }
+    next();
+  }
+
+  if(reduceMotion){
+    renderStatic();
+  } else {
+    typeLines();
+  }
+})();
+</script>
+
+</body>
+</html>
