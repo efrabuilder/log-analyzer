@@ -1,552 +1,652 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="en" data-theme="dark">
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Log Analyzer — network log parsing &amp; anomaly detection</title>
-<meta name="description" content="Python CLI tool that parses network device logs, detects anomalies and sends email alerts when thresholds are exceeded.">
+<title>Log Analyzer — Live Demo</title>
+<meta name="description" content="Paste or upload network device logs to detect anomalies against configurable thresholds, right in your browser.">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@400;500;600&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600;700&family=IBM+Plex+Sans:wght@400;500;600&display=swap" rel="stylesheet">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js"></script>
 <style>
   :root{
-    --bg:#0A0E14;
-    --panel:#10151D;
-    --panel-2:#151B25;
-    --border:#1F2733;
-    --border-strong:#2A3444;
-    --text:#E3E8EF;
-    --text-muted:#7D8899;
-    --critical:#F0546B;
-    --critical-bg:#2A1219;
-    --warning:#E8A33D;
-    --warning-bg:#2A2010;
-    --ok:#4FBF8B;
-    --ok-bg:#0F241C;
-    --info:#5B8DEF;
-    --info-bg:#101A2E;
+    --bg:#0A0E14; --panel:#10151D; --panel-2:#151B25; --field:#0D1219;
+    --border:#1F2733; --border-strong:#2A3444;
+    --text:#E3E8EF; --muted:#7D8899;
+    --critical:#F0546B; --critical-bg:#2A1219;
+    --warning:#E8A33D; --warning-bg:#2A2010;
+    --ok:#4FBF8B; --ok-bg:#0F241C;
+    --info:#5B8DEF; --info-bg:#101A2E;
     --radius:6px;
     --mono:'IBM Plex Mono', ui-monospace, SFMono-Regular, Menlo, monospace;
     --sans:'IBM Plex Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
   }
-  [data-theme="light"]{
-    --bg:#F3F5F8;
-    --panel:#FFFFFF;
-    --panel-2:#F8F9FB;
-    --border:#DEE3EA;
-    --border-strong:#C7D0DB;
-    --text:#101720;
-    --text-muted:#5B6472;
-    --critical:#C93A50;
-    --critical-bg:#FBE9EC;
-    --warning:#A66A0A;
-    --warning-bg:#FBF1DF;
-    --ok:#1F8F63;
-    --ok-bg:#E7F5EF;
-    --info:#2E63C7;
-    --info-bg:#E9F0FC;
+  html[data-theme="light"]{
+    --bg:#F3F5F8; --panel:#FFFFFF; --panel-2:#F8F9FB; --field:#F0F2F5;
+    --border:#DEE3EA; --border-strong:#C7D0DB;
+    --text:#101720; --muted:#5B6472;
+    --critical:#C93A50; --critical-bg:#FBE9EC;
+    --warning:#A66A0A; --warning-bg:#FBF1DF;
+    --ok:#1F8F63; --ok-bg:#E7F5EF;
+    --info:#2E63C7; --info-bg:#E9F0FC;
   }
   *{box-sizing:border-box;}
-  html{scroll-behavior:smooth;}
-  body{
-    margin:0;
-    background:var(--bg);
-    color:var(--text);
-    font-family:var(--sans);
-    font-size:16px;
-    line-height:1.6;
-    transition:background .2s ease, color .2s ease;
-  }
+  body{margin:0;background:var(--bg);color:var(--text);font-family:var(--sans);font-size:15px;line-height:1.6;transition:background .2s ease,color .2s ease;}
+  .wrap{max-width:820px;margin:0 auto;padding:24px 24px 90px;}
   a{color:var(--info);}
-  .wrap{max-width:960px;margin:0 auto;padding:0 24px;}
 
-  /* topbar */
-  .topbar{
-    position:sticky;top:0;z-index:20;
-    background:color-mix(in srgb, var(--bg) 88%, transparent);
-    backdrop-filter:blur(8px);
-    border-bottom:1px solid var(--border);
-  }
-  .topbar-inner{
-    max-width:960px;margin:0 auto;padding:14px 24px;
-    display:flex;align-items:center;justify-content:space-between;
-  }
-  .brand{
-    display:flex;align-items:center;gap:8px;
-    font-family:var(--mono);font-weight:600;font-size:14px;letter-spacing:.02em;
-  }
-  .brand .dot{width:8px;height:8px;border-radius:50%;background:var(--ok);flex:none;}
-  .controls{display:flex;gap:8px;}
-  .ctrl-btn{
-    font-family:var(--mono);font-size:12px;
-    background:var(--panel);border:1px solid var(--border);color:var(--text-muted);
-    border-radius:var(--radius);padding:6px 10px;cursor:pointer;
-  }
+  .topbar{display:flex;align-items:center;justify-content:space-between;margin-bottom:32px;flex-wrap:wrap;gap:10px;}
+  .top-link{display:inline-flex;align-items:center;gap:6px;color:var(--muted);text-decoration:none;font-family:var(--mono);font-size:12.5px;}
+  .top-link:hover{color:var(--text);}
+  .top-controls{display:flex;align-items:center;gap:8px;}
+  .ctrl-btn{font-family:var(--mono);font-size:12px;background:var(--panel);border:1px solid var(--border);color:var(--muted);border-radius:var(--radius);padding:6px 10px;cursor:pointer;}
   .ctrl-btn:hover{border-color:var(--border-strong);color:var(--text);}
-  .ctrl-btn.active{color:var(--text);border-color:var(--border-strong);}
 
-  /* hero */
-  .hero{padding:64px 0 40px;}
-  .eyebrow{
-    font-family:var(--mono);font-size:12px;color:var(--text-muted);
-    text-transform:uppercase;letter-spacing:.08em;margin:0 0 14px;
-  }
-  h1{
-    font-family:var(--mono);font-weight:600;
-    font-size:clamp(28px,4vw,42px);line-height:1.15;letter-spacing:-.01em;
-    margin:0 0 16px;
-  }
-  .lede{
-    font-size:17px;color:var(--text-muted);max-width:52ch;margin:0 0 28px;
-  }
-  .hero-ctas{display:flex;gap:10px;flex-wrap:wrap;margin-bottom:44px;}
-  .btn{
-    font-family:var(--mono);font-size:13px;font-weight:500;
-    padding:11px 18px;border-radius:var(--radius);text-decoration:none;
-    display:inline-flex;align-items:center;gap:8px;border:1px solid transparent;
-    cursor:pointer;
-  }
+  .brand-row{display:flex;align-items:center;gap:10px;margin-bottom:6px;}
+  .brand-row .dot{width:10px;height:10px;border-radius:50%;background:var(--ok);flex:none;}
+  h1{font-family:var(--mono);font-weight:600;font-size:clamp(24px,4vw,32px);margin:0;letter-spacing:-.01em;}
+  .sub{color:var(--muted);max-width:60ch;font-size:14.5px;margin:8px 0 28px;}
+
+  .card{background:var(--panel);border:1px solid var(--border);border-radius:8px;padding:22px;margin-bottom:16px;}
+  .card h2{font-family:var(--mono);font-size:15px;font-weight:600;margin:0 0 16px;display:flex;align-items:center;gap:8px;}
+  .card h2 .n{color:var(--muted);font-weight:400;}
+
+  textarea#log-input{width:100%;min-height:170px;resize:vertical;background:var(--field);border:1px solid var(--border);border-radius:var(--radius);color:var(--text);font-family:var(--mono);font-size:12.5px;line-height:1.7;padding:14px 16px;}
+  textarea#log-input:focus{outline:none;border-color:var(--info);}
+  textarea#log-input::placeholder{color:var(--muted);}
+
+  .actions-row{display:flex;gap:10px;margin-top:14px;flex-wrap:wrap;}
+  .btn{border:none;padding:10px 18px;border-radius:var(--radius);font-size:13px;font-family:var(--mono);font-weight:500;cursor:pointer;transition:all .15s;}
   .btn-primary{background:var(--ok);color:#04241A;}
-  .btn-secondary{background:transparent;border-color:var(--border-strong);color:var(--text);}
-  .btn-secondary:hover{background:var(--panel-2);}
+  .btn-primary:hover{filter:brightness(1.08);}
+  .btn-outline{background:transparent;color:var(--text);border:1px solid var(--border-strong);}
+  .btn-outline:hover{background:var(--panel-2);}
+  .btn:disabled{opacity:.4;cursor:not-allowed;}
 
-  /* terminal */
-  .terminal{
-    background:var(--panel);border:1px solid var(--border);border-radius:8px;
-    overflow:hidden;
-  }
-  .terminal-head{
-    display:flex;align-items:center;gap:8px;padding:10px 14px;
-    border-bottom:1px solid var(--border);background:var(--panel-2);
-  }
-  .terminal-head span{width:10px;height:10px;border-radius:50%;background:var(--border-strong);}
-  .terminal-title{
-    font-family:var(--mono);font-size:12px;color:var(--text-muted);margin-left:6px;
-  }
-  .terminal-body{
-    font-family:var(--mono);font-size:13px;line-height:1.65;
-    padding:18px 20px;min-height:290px;white-space:pre-wrap;word-break:break-word;
-  }
-  .tl{opacity:0;animation:tl-in .25s ease forwards;}
-  @keyframes tl-in{to{opacity:1;}}
-  .tag{font-weight:600;padding:1px 6px;border-radius:3px;font-size:12px;}
+  .placeholder-msg{text-align:center;color:var(--muted);font-size:13.5px;padding:8px 0 0;font-family:var(--mono);}
+
+  .ticket{background:var(--field);border:1px solid var(--border);border-radius:var(--radius);padding:16px 18px;font-family:var(--mono);font-size:13px;}
+  .ticket .tline{display:flex;justify-content:space-between;gap:12px;padding:4px 0;border-bottom:1px dashed var(--border);}
+  .ticket .tline:last-child{border-bottom:none;}
+  .ticket .tline b{color:var(--text);font-weight:500;}
+  .ticket .tline span{color:var(--muted);}
+  .tag{font-weight:600;padding:1px 7px;border-radius:3px;font-size:11.5px;font-family:var(--mono);}
   .tag-critical{color:var(--critical);background:var(--critical-bg);}
   .tag-warning{color:var(--warning);background:var(--warning-bg);}
-  .tag-ok{color:var(--ok);background:var(--ok-bg);}
-  .muted{color:var(--text-muted);}
-  .cursor{display:inline-block;width:7px;height:14px;background:var(--text-muted);vertical-align:-2px;animation:blink 1s step-start infinite;}
-  @keyframes blink{50%{opacity:0;}}
 
-  section{padding:44px 0;border-top:1px solid var(--border);}
-  h2{
-    font-family:var(--mono);font-weight:600;font-size:20px;margin:0 0 8px;
-  }
-  .section-sub{color:var(--text-muted);margin:0 0 28px;max-width:60ch;}
+  .anomaly-list{display:flex;flex-direction:column;gap:8px;margin-top:14px;}
+  .anomaly-row{display:flex;align-items:center;gap:10px;font-family:var(--mono);font-size:13px;background:var(--field);border:1px solid var(--border);border-radius:var(--radius);padding:9px 12px;}
+  .anomaly-row .desc{color:var(--text);}
+  .anomaly-row .thresh{margin-left:auto;color:var(--muted);font-size:12px;}
+  .no-anomalies{color:var(--ok);font-family:var(--mono);font-size:13px;padding:8px 0;}
 
-  /* feature grid */
-  .grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(230px,1fr));gap:14px;}
-  .card{
-    background:var(--panel);border:1px solid var(--border);border-radius:var(--radius);
-    padding:18px;
-  }
-  .card-tag{
-    font-family:var(--mono);font-size:11px;color:var(--text-muted);
-    text-transform:uppercase;letter-spacing:.06em;margin:0 0 8px;
-  }
-  .card p{margin:0;font-size:14.5px;}
-  .card p.title{font-weight:500;margin-bottom:6px;font-size:15px;}
+  .thresh-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:12px;}
+  .thresh-field label{display:block;font-size:12px;color:var(--muted);margin-bottom:6px;font-family:var(--mono);}
+  .thresh-field input{width:100%;background:var(--field);color:var(--text);border:1px solid var(--border);border-radius:var(--radius);padding:8px 10px;font-family:var(--mono);font-size:13px;}
+  .thresh-field input:focus{outline:none;border-color:var(--info);}
 
-  /* status board */
-  table{width:100%;border-collapse:collapse;font-size:14px;}
-  th,td{
-    text-align:left;padding:10px 12px;border-bottom:1px solid var(--border);
-  }
-  th{
-    font-family:var(--mono);font-size:11px;color:var(--text-muted);
-    text-transform:uppercase;letter-spacing:.06em;font-weight:500;
-  }
-  td{font-family:var(--mono);}
-  td.event{font-family:var(--sans);}
-  .status-table{background:var(--panel);border:1px solid var(--border);border-radius:8px;overflow:hidden;}
-  .status-table table{padding:0 6px;}
-  .status-table th,.status-table td{border-color:var(--border);}
-  .status-table tr:last-child td{border-bottom:none;}
+  .charts-grid{display:grid;grid-template-columns:1fr 1fr;gap:16px;}
+  .chart-box{background:var(--field);border:1px solid var(--border);border-radius:var(--radius);padding:14px;}
+  .chart-box h3{font-size:11.5px;font-weight:500;margin:0 0 10px;color:var(--muted);font-family:var(--mono);text-transform:uppercase;letter-spacing:.04em;}
+  canvas{max-height:230px;}
+  @media (max-width:600px){.charts-grid{grid-template-columns:1fr;}}
 
-  /* quickstart */
-  .code-block{
-    background:var(--panel);border:1px solid var(--border);border-radius:var(--radius);
-    font-family:var(--mono);font-size:13px;padding:16px 18px;position:relative;
-    overflow-x:auto;
-  }
-  .code-block pre{margin:0;white-space:pre;}
-  .code-line{color:var(--text);}
-  .code-comment{color:var(--text-muted);}
-  .copy-btn{
-    position:absolute;top:10px;right:10px;
-    font-family:var(--mono);font-size:11px;
-    background:var(--panel-2);border:1px solid var(--border);color:var(--text-muted);
-    border-radius:4px;padding:4px 8px;cursor:pointer;
-  }
-  .copy-btn:hover{color:var(--text);border-color:var(--border-strong);}
-  .steps{display:flex;flex-direction:column;gap:14px;margin-top:20px;}
-  .step{display:flex;gap:14px;align-items:flex-start;}
-  .step-n{
-    font-family:var(--mono);font-size:12px;color:var(--text-muted);
-    border:1px solid var(--border);border-radius:50%;width:22px;height:22px;
-    display:flex;align-items:center;justify-content:center;flex:none;margin-top:2px;
-  }
-  .step p{margin:0;font-size:14.5px;}
-  .step code{
-    background:var(--panel-2);border:1px solid var(--border);border-radius:4px;
-    padding:1px 6px;font-family:var(--mono);font-size:13px;
-  }
+  .email-preview{background:var(--field);border:1px solid var(--border);border-radius:var(--radius);padding:14px 16px;font-family:var(--mono);font-size:12.5px;white-space:pre-wrap;color:var(--text);}
 
-  footer{padding:36px 0 60px;border-top:1px solid var(--border);}
-  .footer-row{
-    display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:12px;
-    font-size:13px;color:var(--text-muted);
-  }
-  .footer-row a{color:var(--text-muted);text-decoration:none;}
-  .footer-row a:hover{color:var(--text);}
+  table.preview{width:100%;border-collapse:collapse;font-size:12.5px;font-family:var(--mono);}
+  table.preview th,table.preview td{padding:7px 10px;border-bottom:1px solid var(--border);text-align:left;white-space:nowrap;}
+  table.preview th{color:var(--muted);font-weight:500;text-transform:uppercase;font-size:10.5px;letter-spacing:.04em;}
+  .table-scroll{overflow-x:auto;max-height:220px;overflow-y:auto;}
 
-  @media (prefers-reduced-motion: reduce){
-    .tl{animation:none;opacity:1;}
-    .cursor{animation:none;}
-  }
-  @media (max-width:640px){
-    .hero{padding:44px 0 28px;}
-    section{padding:32px 0;}
-  }
+  footer{text-align:center;padding-top:30px;font-size:12.5px;color:var(--muted);font-family:var(--mono);}
+  footer a{color:var(--muted);text-decoration:none;}
+  footer a:hover{color:var(--text);}
+  .hidden{display:none !important;}
 </style>
 </head>
-<body data-theme="dark" data-lang="en">
+<body>
+<div class="wrap">
 
-<div class="topbar">
-  <div class="topbar-inner">
-    <div class="brand"><span class="dot" aria-hidden="true"></span>log-analyzer</div>
-    <div class="controls">
+  <div class="topbar">
+    <a class="top-link" href="https://github.com/efrabuilder/log-analyzer" target="_blank" data-i18n="back_link">← github.com/efrabuilder/log-analyzer</a>
+    <div class="top-controls">
       <button class="ctrl-btn" id="lang-toggle" type="button">ES</button>
       <button class="ctrl-btn" id="theme-toggle" type="button">☾</button>
     </div>
   </div>
-</div>
 
-<div class="wrap">
+  <div class="brand-row"><span class="dot"></span><h1>Log Analyzer</h1></div>
+  <p class="sub" data-i18n="subtitle">Paste or upload network device logs to detect anomalies against configurable thresholds, right here in your browser.</p>
 
-  <section class="hero" style="border-top:none;padding-top:64px;">
-    <p class="eyebrow" data-i18n="eyebrow">Python CLI · network operations</p>
-    <h1 data-i18n="h1">Log Analyzer</h1>
-    <p class="lede" data-i18n="lede">Parses router, switch and firewall logs, flags anomalies against configurable thresholds, and emails you before they become an outage.</p>
-    <div class="hero-ctas">
-      <a class="btn btn-primary" href="https://github.com/efrabuilder/log-analyzer" data-i18n="cta-repo">View repository</a>
-      <a class="btn btn-secondary" href="#quickstart" data-i18n="cta-quickstart">Quick start</a>
+  <div class="card">
+    <h2 data-i18n="input_title">Log data input</h2>
+    <textarea id="log-input" data-i18n-placeholder="input_placeholder" placeholder="Paste router / switch / firewall log lines here..."></textarea>
+    <input type="file" id="file-input" accept=".log,.txt" style="display:none;">
+    <div class="actions-row">
+      <button class="btn btn-primary" id="analyze-btn" data-i18n="btn_analyze">▶ Analyze logs</button>
+      <button class="btn btn-outline" id="upload-btn" data-i18n="btn_upload">Upload .log file</button>
+      <button class="btn btn-outline" id="sample-btn" data-i18n="btn_sample">Load sample logs</button>
+      <button class="btn btn-outline" id="clear-btn" data-i18n="btn_clear">Clear</button>
+    </div>
+  </div>
+
+  <p class="placeholder-msg" id="placeholder-msg" data-i18n="placeholder_msg">Paste log lines and click Analyze logs to see results.</p>
+
+  <div id="results" class="hidden">
+
+    <div class="card">
+      <h2 data-i18n="summary_title">Summary</h2>
+      <div class="ticket" id="ticket"></div>
     </div>
 
-    <div class="terminal" role="img" aria-label="Simulated log analyzer terminal output">
-      <div class="terminal-head">
-        <span></span><span></span><span></span>
-        <span class="terminal-title">py log_analyzer.py</span>
-      </div>
-      <div class="terminal-body" id="term-body"></div>
-    </div>
-  </section>
-
-  <section id="features">
-    <h2 data-i18n="feat-h2">What it does</h2>
-    <p class="section-sub" data-i18n="feat-sub">Six things, done well, instead of a hundred half-finished ones.</p>
-    <div class="grid">
-      <div class="card">
-        <p class="card-tag" data-i18n="feat1-tag">Parsing</p>
-        <p class="title" data-i18n="feat1-title">Multi-vendor log parsing</p>
-        <p data-i18n="feat1-body">Reads router, switch and firewall log files without extra configuration.</p>
-      </div>
-      <div class="card">
-        <p class="card-tag" data-i18n="feat2-tag">Detection</p>
-        <p class="title" data-i18n="feat2-title">Seven event types</p>
-        <p data-i18n="feat2-body">Interface down, high CPU, auth failures, link flaps, memory warnings, and BGP/OSPF drops.</p>
-      </div>
-      <div class="card">
-        <p class="card-tag" data-i18n="feat3-tag">Tuning</p>
-        <p class="title" data-i18n="feat3-title">Configurable thresholds</p>
-        <p data-i18n="feat3-body">Set how many occurrences of each event type count as an anomaly.</p>
-      </div>
-      <div class="card">
-        <p class="card-tag" data-i18n="feat4-tag">Reporting</p>
-        <p class="title" data-i18n="feat4-title">Color-coded Excel export</p>
-        <p data-i18n="feat4-body">Events and anomalies land in separate sheets, ready to share with the team.</p>
-      </div>
-      <div class="card">
-        <p class="card-tag" data-i18n="feat5-tag">Alerting</p>
-        <p class="title" data-i18n="feat5-title">Email alerts</p>
-        <p data-i18n="feat5-body">Sends a summary the moment an anomaly crosses its threshold.</p>
-      </div>
-      <div class="card">
-        <p class="card-tag" data-i18n="feat6-tag">Interface</p>
-        <p class="title" data-i18n="feat6-title">Clean CLI</p>
-        <p data-i18n="feat6-body">Analyze a folder, specific files, or a directory with a single argument.</p>
+    <div class="card">
+      <h2 data-i18n="thresh_title">Detection thresholds</h2>
+      <div class="thresh-grid" id="thresh-grid"></div>
+      <div class="actions-row">
+        <button class="btn btn-outline" id="reapply-btn" data-i18n="btn_reapply">Reapply thresholds</button>
       </div>
     </div>
-  </section>
 
-  <section id="events">
-    <h2 data-i18n="events-h2">Detected events</h2>
-    <p class="section-sub" data-i18n="events-sub">Default thresholds — override any of them per deployment.</p>
-    <div class="status-table">
-      <table>
-        <thead>
-          <tr><th data-i18n="events-col1">Event</th><th data-i18n="events-col2">Default threshold</th></tr>
-        </thead>
-        <tbody>
-          <tr><td class="event">Interface down</td><td><span class="tag tag-critical">2 <span data-i18n="occ">occurrences</span></span></td></tr>
-          <tr><td class="event" data-i18n="ev-cpu">High CPU (&gt;85%)</td><td><span class="tag tag-critical">3 <span data-i18n="occ">occurrences</span></span></td></tr>
-          <tr><td class="event" data-i18n="ev-auth">Auth failures</td><td><span class="tag tag-warning">5 <span data-i18n="occ">occurrences</span></span></td></tr>
-          <tr><td class="event" data-i18n="ev-flap">Link flap</td><td><span class="tag tag-warning">3 <span data-i18n="occ">occurrences</span></span></td></tr>
-          <tr><td class="event" data-i18n="ev-mem">Memory warning</td><td><span class="tag tag-warning">2 <span data-i18n="occ">occurrences</span></span></td></tr>
-          <tr><td class="event" data-i18n="ev-ospf">OSPF neighbor down</td><td><span class="tag tag-critical">1 <span data-i18n="occ1">occurrence</span></span></td></tr>
-          <tr><td class="event" data-i18n="ev-bgp">BGP session drop</td><td><span class="tag tag-critical">1 <span data-i18n="occ1">occurrence</span></span></td></tr>
-        </tbody>
-      </table>
-    </div>
-  </section>
-
-  <section id="quickstart">
-    <h2 data-i18n="qs-h2">Quick start</h2>
-    <p class="section-sub" data-i18n="qs-sub">From clone to first report in four steps.</p>
-    <div class="code-block">
-      <button class="copy-btn" id="copy-btn" type="button" data-i18n="copy-btn">Copy</button>
-      <pre id="qs-code"><span class="code-comment"># 1. Clone</span>
-<span class="code-line">git clone https://github.com/efrabuilder/log-analyzer.git</span>
-<span class="code-line">cd log-analyzer</span>
-
-<span class="code-comment"># 2. Install</span>
-<span class="code-line">py -m pip install -r requirements.txt</span>
-
-<span class="code-comment"># 3. Generate sample logs</span>
-<span class="code-line">py generate_sample_logs.py</span>
-
-<span class="code-comment"># 4. Run</span>
-<span class="code-line">py log_analyzer.py</span></pre>
+    <div class="card">
+      <h2 data-i18n="anomalies_title">Anomalies</h2>
+      <div id="anomaly-list" class="anomaly-list"></div>
     </div>
 
-    <div class="steps">
-      <div class="step">
-        <span class="step-n">1</span>
-        <p data-i18n="step1"><code>py log_analyzer.py</code> — analyze the <code>logs/</code> folder, the default.</p>
-      </div>
-      <div class="step">
-        <span class="step-n">2</span>
-        <p data-i18n="step2"><code>py log_analyzer.py router.log switch.log</code> — analyze specific files.</p>
-      </div>
-      <div class="step">
-        <span class="step-n">3</span>
-        <p data-i18n="step3"><code>py log_analyzer.py --dir /var/log/network</code> — point it at any directory.</p>
-      </div>
-      <div class="step">
-        <span class="step-n">4</span>
-        <p data-i18n="step4"><code>py log_analyzer.py --summary --no-email</code> — print a summary and skip alerts.</p>
+    <div class="card">
+      <h2 data-i18n="charts_title">Event breakdown</h2>
+      <div class="charts-grid">
+        <div class="chart-box"><h3 data-i18n="chart_bar">Events by type</h3><canvas id="chart-bar"></canvas></div>
+        <div class="chart-box"><h3 data-i18n="chart_pie">Severity distribution</h3><canvas id="chart-pie"></canvas></div>
       </div>
     </div>
-  </section>
 
-  <section id="stack">
-    <h2 data-i18n="stack-h2">Tech stack</h2>
-    <p class="section-sub" data-i18n="stack-sub">Five standard-library-adjacent tools, nothing exotic.</p>
-    <div class="status-table">
-      <table>
-        <thead>
-          <tr><th data-i18n="stack-col1">Tool</th><th data-i18n="stack-col2">Purpose</th></tr>
-        </thead>
-        <tbody>
-          <tr><td class="event"><code>re</code></td><td data-i18n="stack1">Regex log parsing</td></tr>
-          <tr><td class="event"><code>pandas</code></td><td data-i18n="stack2">Data processing</td></tr>
-          <tr><td class="event"><code>openpyxl</code></td><td data-i18n="stack3">Excel report</td></tr>
-          <tr><td class="event"><code>smtplib</code></td><td data-i18n="stack4">Email alerts</td></tr>
-          <tr><td class="event"><code>argparse</code></td><td data-i18n="stack5">CLI interface</td></tr>
-        </tbody>
-      </table>
+    <div class="card">
+      <h2 data-i18n="events_title">Parsed events <span class="n" id="events-count-label"></span></h2>
+      <div class="table-scroll"><table class="preview" id="events-table"></table></div>
     </div>
-  </section>
+
+    <div class="card">
+      <h2 data-i18n="email_title">Email alert preview</h2>
+      <div class="email-preview" id="email-preview"></div>
+      <div class="actions-row">
+        <button class="btn btn-outline" id="copy-email-btn" data-i18n="btn_copy">Copy alert text</button>
+      </div>
+    </div>
+
+    <div class="card">
+      <h2 data-i18n="export_title">Export report</h2>
+      <div class="actions-row">
+        <button class="btn btn-primary" id="download-xlsx" data-i18n="btn_xlsx">⬇ Download Excel report (.xlsx)</button>
+      </div>
+    </div>
+
+  </div>
 
   <footer>
-    <div class="footer-row">
-      <span data-i18n="footer-left">MIT license · built by Efraín Rojas Artavia</span>
-      <a href="https://github.com/efrabuilder/log-analyzer" data-i18n="footer-right">github.com/efrabuilder/log-analyzer</a>
-    </div>
+    <span data-i18n="footer_built">Built by Efraín Rojas Artavia</span> · <a href="https://github.com/efrabuilder/log-analyzer" target="_blank" data-i18n="footer_source">source on GitHub</a>
   </footer>
 
 </div>
 
 <script>
 (function(){
-  var i18n = {
-    en: {
-      eyebrow: "Python CLI · network operations",
-      h1: "Log Analyzer",
-      lede: "Parses router, switch and firewall logs, flags anomalies against configurable thresholds, and emails you before they become an outage.",
-      "cta-repo": "View repository",
-      "cta-quickstart": "Quick start",
-      "feat-h2": "What it does",
-      "feat-sub": "Six things, done well, instead of a hundred half-finished ones.",
-      "feat1-tag":"Parsing","feat1-title":"Multi-vendor log parsing","feat1-body":"Reads router, switch and firewall log files without extra configuration.",
-      "feat2-tag":"Detection","feat2-title":"Seven event types","feat2-body":"Interface down, high CPU, auth failures, link flaps, memory warnings, and BGP/OSPF drops.",
-      "feat3-tag":"Tuning","feat3-title":"Configurable thresholds","feat3-body":"Set how many occurrences of each event type count as an anomaly.",
-      "feat4-tag":"Reporting","feat4-title":"Color-coded Excel export","feat4-body":"Events and anomalies land in separate sheets, ready to share with the team.",
-      "feat5-tag":"Alerting","feat5-title":"Email alerts","feat5-body":"Sends a summary the moment an anomaly crosses its threshold.",
-      "feat6-tag":"Interface","feat6-title":"Clean CLI","feat6-body":"Analyze a folder, specific files, or a directory with a single argument.",
-      "events-h2": "Detected events",
-      "events-sub": "Default thresholds — override any of them per deployment.",
-      "events-col1":"Event","events-col2":"Default threshold",
-      "ev-cpu":"High CPU (>85%)","ev-auth":"Auth failures","ev-flap":"Link flap","ev-mem":"Memory warning","ev-ospf":"OSPF neighbor down","ev-bgp":"BGP session drop",
-      "occ":"occurrences","occ1":"occurrence",
-      "qs-h2": "Quick start",
-      "qs-sub": "From clone to first report in four steps.",
-      "copy-btn": "Copy",
-      "step1": '<code>py log_analyzer.py</code> — analyze the <code>logs/</code> folder, the default.',
-      "step2": '<code>py log_analyzer.py router.log switch.log</code> — analyze specific files.',
-      "step3": '<code>py log_analyzer.py --dir /var/log/network</code> — point it at any directory.',
-      "step4": '<code>py log_analyzer.py --summary --no-email</code> — print a summary and skip alerts.',
-      "stack-h2": "Tech stack",
-      "stack-sub": "Five standard-library-adjacent tools, nothing exotic.",
-      "stack-col1":"Tool","stack-col2":"Purpose",
-      "stack1":"Regex log parsing","stack2":"Data processing","stack3":"Excel report","stack4":"Email alerts","stack5":"CLI interface",
-      "footer-left": "MIT license · built by Efraín Rojas Artavia",
-      "footer-right": "github.com/efrabuilder/log-analyzer"
+
+var I18N = {
+  en: {
+    back_link: "← github.com/efrabuilder/log-analyzer",
+    subtitle: "Paste or upload network device logs to detect anomalies against configurable thresholds, right here in your browser.",
+    input_title: "Log data input",
+    input_placeholder: "Paste router / switch / firewall log lines here...",
+    btn_analyze: "▶ Analyze logs",
+    btn_upload: "Upload .log file",
+    btn_sample: "Load sample logs",
+    btn_clear: "Clear",
+    btn_reapply: "Reapply thresholds",
+    btn_copy: "Copy alert text",
+    btn_xlsx: "⬇ Download Excel report (.xlsx)",
+    placeholder_msg: "Paste log lines and click Analyze logs to see results.",
+    summary_title: "Summary",
+    thresh_title: "Detection thresholds",
+    anomalies_title: "Anomalies",
+    charts_title: "Event breakdown",
+    chart_bar: "Events by type",
+    chart_pie: "Severity distribution",
+    events_title: "Parsed events",
+    email_title: "Email alert preview",
+    export_title: "Export report",
+    footer_built: "Built by Efraín Rojas Artavia",
+    footer_source: "source on GitHub",
+    no_data: "No recognizable log lines found in the pasted text.",
+    lbl_lines: "Log lines analyzed",
+    lbl_total_events: "Total events",
+    lbl_critical: "CRITICAL",
+    lbl_warning: "WARNING",
+    lbl_anomalies: "Anomalies detected",
+    lbl_generated: "Generated",
+    no_anomalies: "No anomalies — every event type is under its threshold.",
+    occurred: "occurred",
+    times: "x",
+    threshold_word: "threshold",
+    col_time: "Timestamp",
+    col_type: "Event type",
+    col_severity: "Severity",
+    col_line: "Raw line",
+    email_subject: "Subject: [Log Analyzer] anomalies detected",
+    email_intro: "The following anomalies were detected during the latest run:",
+    email_none: "No anomalies were detected during the latest run.",
+    thresh_labels: {
+      interface_down:"Interface down", high_cpu:"High CPU (>85%)", auth_failure:"Auth failures",
+      link_flap:"Link flap", memory_warning:"Memory warning", ospf_down:"OSPF neighbor down", bgp_drop:"BGP session drop"
     },
-    es: {
-      eyebrow: "CLI en Python · operaciones de red",
-      h1: "Log Analyzer",
-      lede: "Analiza logs de routers, switches y firewalls, detecta anomalías según umbrales configurables y te avisa por correo antes de que se conviertan en una caída del servicio.",
-      "cta-repo": "Ver repositorio",
-      "cta-quickstart": "Inicio rápido",
-      "feat-h2": "Qué hace",
-      "feat-sub": "Seis cosas bien hechas, en vez de cien a medias.",
-      "feat1-tag":"Parsing","feat1-title":"Lectura multi-vendor","feat1-body":"Lee logs de routers, switches y firewalls sin configuración adicional.",
-      "feat2-tag":"Detección","feat2-title":"Siete tipos de eventos","feat2-body":"Interfaz caída, CPU alta, fallos de autenticación, link flaps, avisos de memoria y caídas de BGP/OSPF.",
-      "feat3-tag":"Ajuste","feat3-title":"Umbrales configurables","feat3-body":"Define cuántas ocurrencias de cada evento cuentan como anomalía.",
-      "feat4-tag":"Reportes","feat4-title":"Exportación a Excel con colores","feat4-body":"Eventos y anomalías quedan en hojas separadas, listas para compartir con el equipo.",
-      "feat5-tag":"Alertas","feat5-title":"Alertas por correo","feat5-body":"Envía un resumen en cuanto una anomalía supera su umbral.",
-      "feat6-tag":"Interfaz","feat6-title":"CLI simple","feat6-body":"Analiza una carpeta, archivos específicos o un directorio con un solo argumento.",
-      "events-h2": "Eventos detectados",
-      "events-sub": "Umbrales por defecto — se pueden ajustar según cada despliegue.",
-      "events-col1":"Evento","events-col2":"Umbral por defecto",
-      "ev-cpu":"CPU alta (>85%)","ev-auth":"Fallos de autenticación","ev-flap":"Link flap","ev-mem":"Aviso de memoria","ev-ospf":"Vecino OSPF caído","ev-bgp":"Caída de sesión BGP",
-      "occ":"ocurrencias","occ1":"ocurrencia",
-      "qs-h2": "Inicio rápido",
-      "qs-sub": "Del clonado al primer reporte en cuatro pasos.",
-      "copy-btn": "Copiar",
-      "step1": '<code>py log_analyzer.py</code> — analiza la carpeta <code>logs/</code>, la opción por defecto.',
-      "step2": '<code>py log_analyzer.py router.log switch.log</code> — analiza archivos específicos.',
-      "step3": '<code>py log_analyzer.py --dir /var/log/network</code> — apunta a cualquier directorio.',
-      "step4": '<code>py log_analyzer.py --summary --no-email</code> — imprime un resumen sin enviar alertas.',
-      "stack-h2": "Stack técnico",
-      "stack-sub": "Cinco herramientas cercanas a la librería estándar, nada exótico.",
-      "stack-col1":"Herramienta","stack-col2":"Función",
-      "stack1":"Parsing con regex","stack2":"Procesamiento de datos","stack3":"Reporte en Excel","stack4":"Alertas por correo","stack5":"Interfaz de línea de comandos",
-      "footer-left": "Licencia MIT · creado por Efraín Rojas Artavia",
-      "footer-right": "github.com/efrabuilder/log-analyzer"
-    }
+    copied: "Copied"
+  },
+  es: {
+    back_link: "← github.com/efrabuilder/log-analyzer",
+    subtitle: "Pega o sube logs de dispositivos de red para detectar anomalías según umbrales configurables, directo en tu navegador.",
+    input_title: "Entrada de datos de log",
+    input_placeholder: "Pega aquí líneas de log de routers, switches o firewalls...",
+    btn_analyze: "▶ Analizar logs",
+    btn_upload: "Subir archivo .log",
+    btn_sample: "Cargar logs de ejemplo",
+    btn_clear: "Limpiar",
+    btn_reapply: "Reaplicar umbrales",
+    btn_copy: "Copiar texto de alerta",
+    btn_xlsx: "⬇ Descargar reporte Excel (.xlsx)",
+    placeholder_msg: "Pega líneas de log y haz clic en Analizar logs para ver resultados.",
+    summary_title: "Resumen",
+    thresh_title: "Umbrales de detección",
+    anomalies_title: "Anomalías",
+    charts_title: "Desglose de eventos",
+    chart_bar: "Eventos por tipo",
+    chart_pie: "Distribución por severidad",
+    events_title: "Eventos detectados",
+    email_title: "Vista previa de alerta por correo",
+    export_title: "Exportar reporte",
+    footer_built: "Creado por Efraín Rojas Artavia",
+    footer_source: "código en GitHub",
+    no_data: "No se encontraron líneas de log reconocibles en el texto pegado.",
+    lbl_lines: "Líneas de log analizadas",
+    lbl_total_events: "Total de eventos",
+    lbl_critical: "CRITICAL",
+    lbl_warning: "WARNING",
+    lbl_anomalies: "Anomalías detectadas",
+    lbl_generated: "Generado",
+    no_anomalies: "Sin anomalías — todos los tipos de evento están bajo su umbral.",
+    occurred: "ocurrió",
+    times: "x",
+    threshold_word: "umbral",
+    col_time: "Fecha/hora",
+    col_type: "Tipo de evento",
+    col_severity: "Severidad",
+    col_line: "Línea original",
+    email_subject: "Asunto: [Log Analyzer] anomalías detectadas",
+    email_intro: "Se detectaron las siguientes anomalías en la última corrida:",
+    email_none: "No se detectaron anomalías en la última corrida.",
+    thresh_labels: {
+      interface_down:"Interfaz caída", high_cpu:"CPU alta (>85%)", auth_failure:"Fallos de autenticación",
+      link_flap:"Link flap", memory_warning:"Aviso de memoria", ospf_down:"Vecino OSPF caído", bgp_drop:"Caída de sesión BGP"
+    },
+    copied: "Copiado"
+  }
+};
+
+var currentLang = 'en';
+var langBtn = document.getElementById('lang-toggle');
+var themeBtn = document.getElementById('theme-toggle');
+
+var DEFAULT_THRESH = {
+  interface_down: 2, high_cpu: 3, auth_failure: 5,
+  link_flap: 3, memory_warning: 2, ospf_down: 1, bgp_drop: 1
+};
+var thresholds = Object.assign({}, DEFAULT_THRESH);
+var SEVERITY = {
+  interface_down:'critical', high_cpu:'critical', ospf_down:'critical', bgp_drop:'critical',
+  auth_failure:'warning', link_flap:'warning', memory_warning:'warning'
+};
+
+var events = [];
+var totalLines = 0;
+var charts = {};
+
+var SAMPLE_LOG =
+"2026-07-20 08:12:33 router-cr-01 %LINK-3-UPDOWN: Interface GigabitEthernet0/1, changed state to down\n" +
+"2026-07-20 08:12:40 router-cr-01 %LINK-3-UPDOWN: Interface GigabitEthernet0/1, changed state to down\n" +
+"2026-07-20 08:12:55 router-cr-01 %ENVMON-3-CPU: CPU utilization for five seconds: 95%/0%; one minute: 88%\n" +
+"2026-07-20 08:13:10 switch-ac-02 %SEC-6-IPACCESSLOGP: Authentication failure for user admin from 10.0.0.55\n" +
+"2026-07-20 08:13:20 switch-ac-02 %SEC-6-IPACCESSLOGP: Authentication failure for user admin from 10.0.0.55\n" +
+"2026-07-20 08:13:40 switch-ac-02 %SEC-6-IPACCESSLOGP: Authentication failure for user root from 10.0.0.61\n" +
+"2026-07-20 08:14:05 router-cr-01 %LINEPROTO-5-UPDOWN: Line protocol on Interface GigabitEthernet0/2, changed state to down\n" +
+"2026-07-20 08:14:10 router-cr-01 %LINEPROTO-5-UPDOWN: Line protocol on Interface GigabitEthernet0/2, changed state to up\n" +
+"2026-07-20 08:14:40 router-cr-01 %LINEPROTO-5-UPDOWN: Line protocol on Interface GigabitEthernet0/2, changed state to down\n" +
+"2026-07-20 08:15:00 router-cr-01 %SYS-4-MEMLOW: Available memory low: 12% free\n" +
+"2026-07-20 08:15:30 router-cr-01 %OSPF-5-ADJCHG: Process 1, Nbr 10.0.0.2 on Gi0/1 from FULL to DOWN, Neighbor Down\n" +
+"2026-07-20 08:16:00 router-cr-01 %BGP-5-ADJCHANGE: neighbor 10.0.0.9 Down BGP Notification sent\n" +
+"2026-07-20 08:16:45 router-cr-01 %BGP-5-ADJCHANGE: neighbor 10.0.0.12 Down BGP Notification sent\n" +
+"2026-07-20 08:17:10 router-cr-01 %LINK-3-UPDOWN: Interface GigabitEthernet0/3, changed state to down\n" +
+"2026-07-20 08:17:35 router-cr-01 %LINK-3-UPDOWN: Interface GigabitEthernet0/3, changed state to down\n" +
+"2026-07-20 08:18:00 router-cr-01 %LINK-3-UPDOWN: Interface GigabitEthernet0/3, changed state to down\n" +
+"2026-07-20 08:18:20 switch-ac-02 %SEC-6-IPACCESSLOGP: Authentication failure for user admin from 10.0.0.55\n" +
+"2026-07-20 08:18:50 switch-ac-02 %SEC-6-IPACCESSLOGP: Authentication failure for user admin from 10.0.0.55\n" +
+"2026-07-20 08:19:10 switch-ac-02 %SEC-6-IPACCESSLOGP: Authentication failure for user admin from 10.0.0.55\n" +
+"2026-07-20 08:19:30 router-cr-01 %ENVMON-3-CPU: CPU utilization for five seconds: 91%/0%; one minute: 85%\n";
+
+var PATTERNS = [
+  { type:'interface_down', re:/%LINK-3-UPDOWN:.*changed state to down/i, label:'Interface Down' },
+  { type:'link_flap',      re:/%LINEPROTO-5-UPDOWN:/i,                    label:'Link Flap' },
+  { type:'auth_failure',   re:/Authentication failure/i,                  label:'Authentication Failure' },
+  { type:'memory_warning', re:/MEMLOW|memory low/i,                       label:'Memory Warning' },
+  { type:'ospf_down',      re:/%OSPF-5-ADJCHG:.*Down/i,                   label:'Ospf Neighbor Down' },
+  { type:'bgp_drop',       re:/%BGP-5-ADJCHANGE:.*Down/i,                 label:'Bgp Session Drop' },
+  { type:'high_cpu',       re:/CPU utilization.*?(\d+)%/i,                label:'High Cpu', cpu:true }
+];
+var TS_RE = /^(\d{4}-\d{2}-\d{2}[ T]\d{2}:\d{2}:\d{2})/;
+
+function t(key){ return I18N[currentLang][key]; }
+
+function applyLang(lang){
+  currentLang = lang;
+  document.querySelectorAll('[data-i18n]').forEach(function(el){
+    var key = el.getAttribute('data-i18n');
+    var val = I18N[lang][key];
+    if(val !== undefined) el.textContent = val;
+  });
+  document.querySelectorAll('[data-i18n-placeholder]').forEach(function(el){
+    var key = el.getAttribute('data-i18n-placeholder');
+    var val = I18N[lang][key];
+    if(val !== undefined) el.placeholder = val;
+  });
+  langBtn.textContent = lang === 'en' ? 'ES' : 'EN';
+  document.documentElement.setAttribute('lang', lang);
+  if(events.length){ buildThresholdInputs(); renderAll(); }
+}
+
+function applyTheme(theme){
+  document.documentElement.setAttribute('data-theme', theme);
+  themeBtn.textContent = theme === 'dark' ? '☾' : '☀';
+  if(events.length){ renderCharts(); }
+}
+
+langBtn.addEventListener('click', function(){
+  applyLang(currentLang === 'en' ? 'es' : 'en');
+});
+themeBtn.addEventListener('click', function(){
+  var cur = document.documentElement.getAttribute('data-theme');
+  applyTheme(cur === 'dark' ? 'light' : 'dark');
+});
+
+document.getElementById('upload-btn').addEventListener('click', function(){
+  document.getElementById('file-input').click();
+});
+document.getElementById('file-input').addEventListener('change', function(e){
+  var file = e.target.files[0];
+  if(!file) return;
+  var reader = new FileReader();
+  reader.onload = function(ev){
+    document.getElementById('log-input').value = ev.target.result;
+    analyze();
   };
+  reader.readAsText(file);
+  e.target.value = '';
+});
+document.getElementById('sample-btn').addEventListener('click', function(){
+  document.getElementById('log-input').value = SAMPLE_LOG;
+  analyze();
+});
+document.getElementById('clear-btn').addEventListener('click', function(){
+  document.getElementById('log-input').value = '';
+  events = []; totalLines = 0;
+  document.getElementById('results').classList.add('hidden');
+  document.getElementById('placeholder-msg').classList.remove('hidden');
+});
+document.getElementById('analyze-btn').addEventListener('click', analyze);
+document.getElementById('reapply-btn').addEventListener('click', function(){
+  readThresholdInputs();
+  renderAll();
+});
 
-  var body = document.body;
-  var langBtn = document.getElementById('lang-toggle');
-  var themeBtn = document.getElementById('theme-toggle');
+function analyze(){
+  var text = document.getElementById('log-input').value;
+  var lines = text.split('\n').map(function(l){return l.trim();}).filter(function(l){return l.length;});
+  if(!lines.length){ alert(t('no_data')); return; }
 
-  function applyLang(lang){
-    var dict = i18n[lang];
-    document.querySelectorAll('[data-i18n]').forEach(function(el){
-      var key = el.getAttribute('data-i18n');
-      if(dict[key] !== undefined){
-        el.innerHTML = dict[key];
+  events = [];
+  lines.forEach(function(line){
+    var tsMatch = line.match(TS_RE);
+    var ts = tsMatch ? tsMatch[1] : '';
+    for(var i=0;i<PATTERNS.length;i++){
+      var p = PATTERNS[i];
+      var m = line.match(p.re);
+      if(m){
+        if(p.cpu){
+          var pct = parseInt(m[1],10);
+          if(isNaN(pct) || pct <= 85) continue;
+        }
+        events.push({ type:p.type, label:p.label, severity:SEVERITY[p.type], ts:ts, line:line });
+        break;
       }
-    });
-    body.setAttribute('data-lang', lang);
-    langBtn.textContent = lang === 'en' ? 'ES' : 'EN';
-    document.documentElement.setAttribute('lang', lang);
-  }
-
-  function applyTheme(theme){
-    body.setAttribute('data-theme', theme);
-    themeBtn.textContent = theme === 'dark' ? '☾' : '☀';
-  }
-
-  langBtn.addEventListener('click', function(){
-    var next = body.getAttribute('data-lang') === 'en' ? 'es' : 'en';
-    applyLang(next);
-  });
-  themeBtn.addEventListener('click', function(){
-    var next = body.getAttribute('data-theme') === 'dark' ? 'light' : 'dark';
-    applyTheme(next);
-  });
-
-  applyLang('en');
-  applyTheme('dark');
-
-  var copyBtn = document.getElementById('copy-btn');
-  copyBtn.addEventListener('click', function(){
-    var text = document.getElementById('qs-code').innerText;
-    navigator.clipboard && navigator.clipboard.writeText(text).then(function(){
-      var lang = body.getAttribute('data-lang');
-      var original = copyBtn.textContent;
-      copyBtn.textContent = lang === 'en' ? 'Copied' : 'Copiado';
-      setTimeout(function(){ copyBtn.textContent = original; }, 1500);
-    });
-  });
-
-  var lines = [
-    {html:'══════════════════════════════════════════════════', cls:'muted'},
-    {html:'&nbsp; LOG ANALYZER &mdash; SUMMARY', cls:''},
-    {html:'══════════════════════════════════════════════════', cls:'muted'},
-    {html:'&nbsp; Log files analyzed &nbsp;: 2', cls:'muted'},
-    {html:'&nbsp; Total events &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; : 31', cls:'muted'},
-    {html:'&nbsp; <span class="tag tag-critical">CRITICAL</span> &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; : 8', cls:''},
-    {html:'&nbsp; <span class="tag tag-warning">WARNING</span> &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; : 14', cls:''},
-    {html:'&nbsp; Anomalies detected : 5', cls:'muted'},
-    {html:'══════════════════════════════════════════════════', cls:'muted'},
-    {html:'', cls:''},
-    {html:'ANOMALIES:', cls:''},
-    {html:'&nbsp; <span class="tag tag-critical">CRITICAL</span> Interface Down occurred 6x (threshold: 2)', cls:''},
-    {html:'&nbsp; <span class="tag tag-critical">CRITICAL</span> Bgp Session Drop occurred 2x (threshold: 1)', cls:''},
-    {html:'&nbsp; <span class="tag tag-warning">WARNING</span> &nbsp;Authentication Failure occurred 8x (threshold: 5)', cls:''},
-    {html:'&nbsp; <span class="tag tag-critical">CRITICAL</span> High Cpu: 95% on router-cr-01 (limit: 85%)', cls:''}
-  ];
-
-  var termBody = document.getElementById('term-body');
-  var reduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
-
-  function renderStatic(){
-    termBody.innerHTML = lines.map(function(l){
-      return '<div class="tl ' + l.cls + '">' + (l.html || '&nbsp;') + '</div>';
-    }).join('');
-  }
-
-  function typeLines(){
-    termBody.innerHTML = '';
-    var i = 0;
-    function next(){
-      if(i >= lines.length){
-        var cur = document.createElement('div');
-        cur.innerHTML = '<span class="cursor"></span>';
-        termBody.appendChild(cur);
-        return;
-      }
-      var l = lines[i];
-      var div = document.createElement('div');
-      div.className = 'tl ' + l.cls;
-      div.innerHTML = l.html || '&nbsp;';
-      termBody.appendChild(div);
-      i++;
-      setTimeout(next, 90);
     }
-    next();
-  }
+  });
 
-  if(reduceMotion){
-    renderStatic();
-  } else {
-    typeLines();
+  totalLines = lines.length;
+  if(!events.length){ alert(t('no_data')); return; }
+
+  thresholds = Object.assign({}, DEFAULT_THRESH);
+  buildThresholdInputs();
+  renderAll();
+
+  document.getElementById('placeholder-msg').classList.add('hidden');
+  document.getElementById('results').classList.remove('hidden');
+  document.getElementById('results').scrollIntoView({behavior:'smooth', block:'start'});
+}
+
+function countByType(){
+  var counts = {};
+  events.forEach(function(e){ counts[e.type] = (counts[e.type]||0) + 1; });
+  return counts;
+}
+
+function buildThresholdInputs(){
+  var counts = countByType();
+  var grid = document.getElementById('thresh-grid');
+  var labels = t('thresh_labels');
+  var order = ['interface_down','high_cpu','auth_failure','link_flap','memory_warning','ospf_down','bgp_drop'];
+  grid.innerHTML = order.filter(function(type){ return counts[type] !== undefined; }).map(function(type){
+    return '<div class="thresh-field">' +
+      '<label>' + labels[type] + ' (' + counts[type] + ')</label>' +
+      '<input type="number" min="1" step="1" id="th-' + type + '" value="' + thresholds[type] + '">' +
+    '</div>';
+  }).join('');
+}
+
+function readThresholdInputs(){
+  Object.keys(thresholds).forEach(function(type){
+    var el = document.getElementById('th-' + type);
+    if(el){
+      var v = parseInt(el.value,10);
+      if(!isNaN(v) && v > 0) thresholds[type] = v;
+    }
+  });
+}
+
+function getAnomalies(){
+  var counts = countByType();
+  var anomalies = [];
+  Object.keys(counts).forEach(function(type){
+    if(counts[type] >= thresholds[type]){
+      anomalies.push({ type:type, count:counts[type], threshold:thresholds[type], severity:SEVERITY[type] });
+    }
+  });
+  anomalies.sort(function(a,b){
+    if(a.severity === b.severity) return b.count - a.count;
+    return a.severity === 'critical' ? -1 : 1;
+  });
+  return anomalies;
+}
+
+function fmtDate(){
+  return new Date().toLocaleString(currentLang === 'es' ? 'es-CR' : 'en-US');
+}
+
+function renderAll(){
+  renderSummary();
+  renderAnomalies();
+  renderCharts();
+  renderEventsTable();
+  renderEmail();
+}
+
+function renderSummary(){
+  var anomalies = getAnomalies();
+  var critical = events.filter(function(e){return e.severity==='critical';}).length;
+  var warning = events.filter(function(e){return e.severity==='warning';}).length;
+  var html =
+    '<div class="tline"><span>' + t('lbl_lines') + '</span><b>' + totalLines + '</b></div>' +
+    '<div class="tline"><span>' + t('lbl_total_events') + '</span><b>' + events.length + '</b></div>' +
+    '<div class="tline"><span>' + t('lbl_critical') + '</span><b>' + critical + '</b></div>' +
+    '<div class="tline"><span>' + t('lbl_warning') + '</span><b>' + warning + '</b></div>' +
+    '<div class="tline"><span>' + t('lbl_anomalies') + '</span><b>' + anomalies.length + '</b></div>' +
+    '<div class="tline"><span>' + t('lbl_generated') + '</span><b>' + fmtDate() + '</b></div>';
+  document.getElementById('ticket').innerHTML = html;
+}
+
+function renderAnomalies(){
+  var anomalies = getAnomalies();
+  var labels = t('thresh_labels');
+  var el = document.getElementById('anomaly-list');
+  if(!anomalies.length){
+    el.innerHTML = '<div class="no-anomalies">' + t('no_anomalies') + '</div>';
+    return;
   }
+  el.innerHTML = anomalies.map(function(a){
+    var tagClass = a.severity === 'critical' ? 'tag-critical' : 'tag-warning';
+    var tagText = a.severity === 'critical' ? t('lbl_critical') : t('lbl_warning');
+    return '<div class="anomaly-row">' +
+      '<span class="tag ' + tagClass + '">' + tagText + '</span>' +
+      '<span class="desc">' + labels[a.type] + ' ' + t('occurred') + ' ' + a.count + t('times') + '</span>' +
+      '<span class="thresh">' + t('threshold_word') + ': ' + a.threshold + '</span>' +
+    '</div>';
+  }).join('');
+}
+
+function themeInk(){
+  var dark = document.documentElement.getAttribute('data-theme') !== 'light';
+  return dark
+    ? { text:'#E3E8EF', muted:'#7D8899', grid:'rgba(255,255,255,.06)' }
+    : { text:'#101720', muted:'#5B6472', grid:'rgba(16,23,32,.08)' };
+}
+
+function renderCharts(){
+  var counts = countByType();
+  var labels = t('thresh_labels');
+  var order = Object.keys(counts);
+  var ink = themeInk();
+  var critical = '#F0546B', warning = '#E8A33D';
+
+  Object.keys(charts).forEach(function(k){ charts[k].destroy(); });
+
+  charts.bar = new Chart(document.getElementById('chart-bar'), {
+    type:'bar',
+    data:{
+      labels: order.map(function(k){return labels[k];}),
+      datasets:[{
+        data: order.map(function(k){return counts[k];}),
+        backgroundColor: order.map(function(k){return SEVERITY[k]==='critical' ? critical : warning;})
+      }]
+    },
+    options:{
+      plugins:{ legend:{ display:false } },
+      scales:{
+        x:{ ticks:{ color:ink.muted, font:{ family:'IBM Plex Mono', size:10 } }, grid:{ color:ink.grid } },
+        y:{ ticks:{ color:ink.muted, font:{ family:'IBM Plex Mono', size:10 } }, grid:{ color:ink.grid }, beginAtZero:true }
+      }
+    }
+  });
+
+  var critCount = events.filter(function(e){return e.severity==='critical';}).length;
+  var warnCount = events.filter(function(e){return e.severity==='warning';}).length;
+  charts.pie = new Chart(document.getElementById('chart-pie'), {
+    type:'doughnut',
+    data:{
+      labels:[t('lbl_critical'), t('lbl_warning')],
+      datasets:[{ data:[critCount, warnCount], backgroundColor:[critical, warning] }]
+    },
+    options:{
+      plugins:{ legend:{ position:'bottom', labels:{ color:ink.text, font:{ family:'IBM Plex Mono', size:11 } } } }
+    }
+  });
+}
+
+function renderEventsTable(){
+  var labels = t('thresh_labels');
+  document.getElementById('events-count-label').textContent = '(' + events.length + ')';
+  var rows = events.slice(0, 40);
+  var html = '<thead><tr><th>' + t('col_time') + '</th><th>' + t('col_type') + '</th><th>' + t('col_severity') + '</th><th>' + t('col_line') + '</th></tr></thead><tbody>';
+  rows.forEach(function(e){
+    var tagClass = e.severity === 'critical' ? 'tag-critical' : 'tag-warning';
+    var tagText = e.severity === 'critical' ? t('lbl_critical') : t('lbl_warning');
+    html += '<tr><td>' + (e.ts||'—') + '</td><td>' + labels[e.type] + '</td><td><span class="tag ' + tagClass + '">' + tagText + '</span></td><td>' + escapeHtml(e.line) + '</td></tr>';
+  });
+  html += '</tbody>';
+  document.getElementById('events-table').innerHTML = html;
+}
+
+function escapeHtml(s){
+  return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+}
+
+function renderEmail(){
+  var anomalies = getAnomalies();
+  var labels = t('thresh_labels');
+  var lines = [t('email_subject'), ''];
+  if(!anomalies.length){
+    lines.push(t('email_none'));
+  } else {
+    lines.push(t('email_intro'), '');
+    anomalies.forEach(function(a){
+      var tagText = a.severity === 'critical' ? t('lbl_critical') : t('lbl_warning');
+      lines.push('[' + tagText + '] ' + labels[a.type] + ' ' + t('occurred') + ' ' + a.count + t('times') + ' (' + t('threshold_word') + ': ' + a.threshold + ')');
+    });
+  }
+  document.getElementById('email-preview').textContent = lines.join('\n');
+}
+
+document.getElementById('copy-email-btn').addEventListener('click', function(){
+  var text = document.getElementById('email-preview').textContent;
+  navigator.clipboard && navigator.clipboard.writeText(text).then(function(){
+    var btn = document.getElementById('copy-email-btn');
+    var original = btn.textContent;
+    btn.textContent = t('copied');
+    setTimeout(function(){ btn.textContent = original; }, 1500);
+  });
+});
+
+document.getElementById('download-xlsx').addEventListener('click', function(){
+  var labels = t('thresh_labels');
+  var anomalies = getAnomalies();
+
+  var eventsSheet = XLSX.utils.json_to_sheet(events.map(function(e){
+    return {
+      Timestamp: e.ts, EventType: labels[e.type], Severity: e.severity.toUpperCase(), Line: e.line
+    };
+  }));
+  var anomaliesSheet = XLSX.utils.json_to_sheet(anomalies.map(function(a){
+    return {
+      EventType: labels[a.type], Severity: a.severity.toUpperCase(), Occurrences: a.count, Threshold: a.threshold
+    };
+  }));
+
+  var wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, anomaliesSheet, 'Anomalies');
+  XLSX.utils.book_append_sheet(wb, eventsSheet, 'Events');
+  XLSX.writeFile(wb, 'log-analyzer-report.xlsx');
+});
+
+applyLang('en');
+applyTheme('dark');
+
 })();
 </script>
-
 </body>
 </html>
