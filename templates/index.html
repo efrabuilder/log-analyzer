@@ -1,216 +1,649 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="en" data-theme="dark">
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Log Analyzer — Efraín Rojas Artavia</title>
-<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=Syne:wght@700;800&display=swap" rel="stylesheet">
+<title>Log Analyzer — Live Demo</title>
+<meta name="description" content="Paste or upload network device logs to detect anomalies against configurable thresholds.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600;700&family=IBM+Plex+Sans:wght@400;500;600&display=swap" rel="stylesheet">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js"></script>
 <style>
-  :root { --c1:#FF6B35; --dark:#0D0D0D; --card:#141414; --border:rgba(255,255,255,0.08); --text:#F0EEE8; --muted:#888; }
-  * { margin:0; padding:0; box-sizing:border-box; }
-  body { background:var(--dark); color:var(--text); font-family:'Space Grotesk',sans-serif; font-size:14px; line-height:1.6; }
-  nav { background:rgba(13,13,13,0.95); border-bottom:1px solid var(--border); padding:14px 32px; display:flex; align-items:center; justify-content:space-between; position:sticky; top:0; z-index:50; }
-  .logo { font-family:'Syne',sans-serif; font-size:18px; font-weight:800; }
-  .logo span { color:var(--c1); }
-  .back { color:var(--muted); text-decoration:none; font-size:13px; transition:color .2s; }
-  .back:hover { color:var(--text); }
-  .hero { padding:48px 32px 32px; max-width:1100px; margin:0 auto; }
-  h1 { font-family:'Syne',sans-serif; font-size:clamp(28px,4vw,42px); font-weight:800; letter-spacing:-1px; margin-bottom:8px; }
-  h1 span { color:var(--c1); }
-  .subtitle { color:var(--muted); font-size:15px; margin-bottom:32px; }
-  .main { display:grid; grid-template-columns:1fr 1fr; gap:20px; max-width:1100px; margin:0 auto; padding:0 32px 48px; }
-  @media(max-width:768px) { .main { grid-template-columns:1fr; } }
-  .panel { background:var(--card); border:1px solid var(--border); border-radius:14px; padding:24px; }
-  .panel-title { font-weight:600; font-size:15px; margin-bottom:16px; display:flex; align-items:center; gap:8px; }
-  .panel-title span { font-size:18px; }
-  textarea {
-    width:100%; height:280px; background:rgba(255,255,255,0.04);
-    border:1px solid var(--border); border-radius:8px;
-    color:var(--text); font-family:'Space Grotesk',sans-serif;
-    font-size:12px; padding:12px; resize:vertical; outline:none;
-    transition:border-color .2s; line-height:1.5;
+  :root{
+    --bg:#0A0E14; --panel:#10151D; --panel-2:#151B25; --field:#0D1219;
+    --border:#1F2733; --border-strong:#2A3444;
+    --text:#E3E8EF; --muted:#7D8899;
+    --critical:#F0546B; --critical-bg:#2A1219;
+    --warning:#E8A33D; --warning-bg:#2A2010;
+    --ok:#4FBF8B; --ok-bg:#0F241C;
+    --info:#5B8DEF; --info-bg:#101A2E;
+    --radius:6px;
+    --mono:'IBM Plex Mono', ui-monospace, SFMono-Regular, Menlo, monospace;
+    --sans:'IBM Plex Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
   }
-  textarea:focus { border-color:rgba(255,107,53,0.5); }
-  .btn-row { display:flex; gap:10px; margin-top:12px; }
-  button {
-    padding:10px 20px; border-radius:8px; border:none; cursor:pointer;
-    font-family:'Space Grotesk',sans-serif; font-size:13px; font-weight:600;
-    transition:all .2s;
+  html[data-theme="light"]{
+    --bg:#F3F5F8; --panel:#FFFFFF; --panel-2:#F8F9FB; --field:#F0F2F5;
+    --border:#DEE3EA; --border-strong:#C7D0DB;
+    --text:#101720; --muted:#5B6472;
+    --critical:#C93A50; --critical-bg:#FBE9EC;
+    --warning:#A66A0A; --warning-bg:#FBF1DF;
+    --ok:#1F8F63; --ok-bg:#E7F5EF;
+    --info:#2E63C7; --info-bg:#E9F0FC;
   }
-  .btn-primary { background:var(--c1); color:#fff; flex:1; }
-  .btn-primary:hover { background:#ff4d1a; }
-  .btn-primary:disabled { opacity:.5; cursor:not-allowed; }
-  .btn-secondary { background:rgba(255,255,255,0.06); color:var(--muted); border:1px solid var(--border); }
-  .btn-secondary:hover { color:var(--text); border-color:rgba(255,255,255,0.2); }
+  *{box-sizing:border-box;}
+  body{margin:0;background:var(--bg);color:var(--text);font-family:var(--sans);font-size:15px;line-height:1.6;transition:background .2s ease,color .2s ease;}
+  .wrap{max-width:820px;margin:0 auto;padding:24px 24px 90px;}
+  a{color:var(--info);}
 
-  /* Stats */
-  .stats-grid { display:grid; grid-template-columns:repeat(2,1fr); gap:10px; margin-bottom:16px; }
-  .stat-card { background:rgba(255,255,255,0.03); border:1px solid var(--border); border-radius:10px; padding:12px 16px; }
-  .stat-val { font-family:'Syne',sans-serif; font-size:24px; font-weight:800; }
-  .stat-lbl { font-size:11px; color:var(--muted); text-transform:uppercase; letter-spacing:.5px; }
-  .stat-total   .stat-val { color:var(--c1); }
-  .stat-critical .stat-val { color:#f87171; }
-  .stat-warning  .stat-val { color:#fbbf24; }
-  .stat-anomaly  .stat-val { color:#a78bfa; }
+  .topbar{display:flex;align-items:center;justify-content:space-between;margin-bottom:32px;flex-wrap:wrap;gap:10px;}
+  .top-link{display:inline-flex;align-items:center;gap:6px;color:var(--muted);text-decoration:none;font-family:var(--mono);font-size:12.5px;}
+  .top-link:hover{color:var(--text);}
+  .top-controls{display:flex;align-items:center;gap:8px;}
+  .ctrl-btn{font-family:var(--mono);font-size:12px;background:var(--panel);border:1px solid var(--border);color:var(--muted);border-radius:var(--radius);padding:6px 10px;cursor:pointer;}
+  .ctrl-btn:hover{border-color:var(--border-strong);color:var(--text);}
 
-  /* Events list */
-  .events-list { display:flex; flex-direction:column; gap:6px; max-height:400px; overflow-y:auto; }
-  .event-item { background:rgba(255,255,255,0.03); border-radius:8px; padding:10px 12px; border-left:3px solid transparent; }
-  .event-item.CRITICAL { border-left-color:#f87171; }
-  .event-item.WARNING  { border-left-color:#fbbf24; }
-  .event-item.ERROR    { border-left-color:#fb923c; }
-  .event-type { font-weight:600; font-size:12px; margin-bottom:2px; }
-  .event-line { font-size:11px; color:var(--muted); font-family:monospace; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
-  .badge { display:inline-block; padding:1px 8px; border-radius:4px; font-size:10px; font-weight:700; margin-left:6px; }
-  .badge-CRITICAL { background:rgba(248,113,113,0.15); color:#f87171; }
-  .badge-WARNING  { background:rgba(251,191,36,0.15);  color:#fbbf24; }
-  .badge-ERROR    { background:rgba(251,146,60,0.15);  color:#fb923c; }
+  .brand-row{display:flex;align-items:center;gap:10px;margin-bottom:6px;}
+  .brand-row .dot{width:10px;height:10px;border-radius:50%;background:var(--ok);flex:none;}
+  h1{font-family:var(--mono);font-weight:600;font-size:clamp(24px,4vw,32px);margin:0;letter-spacing:-.01em;}
+  .sub{color:var(--muted);max-width:60ch;font-size:14.5px;margin:8px 0 28px;}
 
-  /* Anomalies */
-  .anomaly-item { background:rgba(255,255,255,0.03); border-radius:8px; padding:12px 14px; border:1px solid rgba(255,255,255,0.06); margin-bottom:8px; }
-  .anomaly-item.CRITICAL { border-color:rgba(248,113,113,0.25); background:rgba(248,113,113,0.05); }
-  .anomaly-item.WARNING  { border-color:rgba(251,191,36,0.25);  background:rgba(251,191,36,0.05); }
-  .anomaly-msg { font-size:13px; font-weight:500; }
-  .anomaly-sub { font-size:12px; color:var(--muted); margin-top:2px; }
+  .card{background:var(--panel);border:1px solid var(--border);border-radius:8px;padding:22px;margin-bottom:16px;}
+  .card h2{font-family:var(--mono);font-size:15px;font-weight:600;margin:0 0 16px;display:flex;align-items:center;gap:8px;}
+  .card h2 .n{color:var(--muted);font-weight:400;}
 
-  .empty { text-align:center; color:var(--muted); padding:40px 20px; font-size:13px; }
-  .loading { text-align:center; color:var(--c1); padding:20px; font-size:13px; }
+  textarea#log-input{width:100%;min-height:170px;resize:vertical;background:var(--field);border:1px solid var(--border);border-radius:var(--radius);color:var(--text);font-family:var(--mono);font-size:12.5px;line-height:1.7;padding:14px 16px;}
+  textarea#log-input:focus{outline:none;border-color:var(--info);}
+  textarea#log-input::placeholder{color:var(--muted);}
 
-  ::-webkit-scrollbar { width:4px; }
-  ::-webkit-scrollbar-thumb { background:rgba(255,255,255,0.1); border-radius:2px; }
+  .actions-row{display:flex;gap:10px;margin-top:14px;flex-wrap:wrap;}
+  .btn{border:none;padding:10px 18px;border-radius:var(--radius);font-size:13px;font-family:var(--mono);font-weight:500;cursor:pointer;transition:all .15s;}
+  .btn-primary{background:var(--ok);color:#04241A;}
+  .btn-primary:hover{filter:brightness(1.08);}
+  .btn-outline{background:transparent;color:var(--text);border:1px solid var(--border-strong);}
+  .btn-outline:hover{background:var(--panel-2);}
+  .btn:disabled{opacity:.4;cursor:not-allowed;}
+
+  .placeholder-msg{text-align:center;color:var(--muted);font-size:13.5px;padding:8px 0 0;font-family:var(--mono);}
+  .error-msg{text-align:center;color:var(--critical);font-size:13.5px;padding:8px 0 0;font-family:var(--mono);}
+
+  .ticket{background:var(--field);border:1px solid var(--border);border-radius:var(--radius);padding:16px 18px;font-family:var(--mono);font-size:13px;}
+  .ticket .tline{display:flex;justify-content:space-between;gap:12px;padding:4px 0;border-bottom:1px dashed var(--border);}
+  .ticket .tline:last-child{border-bottom:none;}
+  .ticket .tline b{color:var(--text);font-weight:500;}
+  .ticket .tline span{color:var(--muted);}
+  .tag{font-weight:600;padding:1px 7px;border-radius:3px;font-size:11.5px;font-family:var(--mono);}
+  .tag-critical{color:var(--critical);background:var(--critical-bg);}
+  .tag-warning{color:var(--warning);background:var(--warning-bg);}
+  .tag-error{color:var(--info);background:var(--info-bg);}
+
+  .anomaly-list{display:flex;flex-direction:column;gap:8px;margin-top:14px;}
+  .anomaly-row{display:flex;align-items:center;gap:10px;font-family:var(--mono);font-size:13px;background:var(--field);border:1px solid var(--border);border-radius:var(--radius);padding:9px 12px;flex-wrap:wrap;}
+  .anomaly-row .desc{color:var(--text);}
+  .anomaly-row .thresh{margin-left:auto;color:var(--muted);font-size:12px;}
+  .no-anomalies{color:var(--ok);font-family:var(--mono);font-size:13px;padding:8px 0;}
+
+  .thresh-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:12px;}
+  .thresh-field label{display:block;font-size:12px;color:var(--muted);margin-bottom:6px;font-family:var(--mono);}
+  .thresh-field input{width:100%;background:var(--field);color:var(--text);border:1px solid var(--border);border-radius:var(--radius);padding:8px 10px;font-family:var(--mono);font-size:13px;}
+  .thresh-field input:focus{outline:none;border-color:var(--info);}
+
+  .charts-grid{display:grid;grid-template-columns:1fr 1fr;gap:16px;}
+  .chart-box{background:var(--field);border:1px solid var(--border);border-radius:var(--radius);padding:14px;}
+  .chart-box h3{font-size:11.5px;font-weight:500;margin:0 0 10px;color:var(--muted);font-family:var(--mono);text-transform:uppercase;letter-spacing:.04em;}
+  canvas{max-height:230px;}
+  @media (max-width:600px){.charts-grid{grid-template-columns:1fr;}}
+
+  .email-preview{background:var(--field);border:1px solid var(--border);border-radius:var(--radius);padding:14px 16px;font-family:var(--mono);font-size:12.5px;white-space:pre-wrap;color:var(--text);}
+
+  table.preview{width:100%;border-collapse:collapse;font-size:12.5px;font-family:var(--mono);}
+  table.preview th,table.preview td{padding:7px 10px;border-bottom:1px solid var(--border);text-align:left;white-space:nowrap;}
+  table.preview th{color:var(--muted);font-weight:500;text-transform:uppercase;font-size:10.5px;letter-spacing:.04em;}
+  .table-scroll{overflow-x:auto;max-height:220px;overflow-y:auto;}
+
+  footer{text-align:center;padding-top:30px;font-size:12.5px;color:var(--muted);font-family:var(--mono);}
+  footer a{color:var(--muted);text-decoration:none;}
+  footer a:hover{color:var(--text);}
+  .hidden{display:none !important;}
 </style>
 </head>
 <body>
+<div class="wrap">
 
-<nav>
-  <div class="logo">log<span>.</span>analyzer</div>
-  <a class="back" href="https://efrabuilder.github.io">← Back to portfolio</a>
-</nav>
-
-<div class="hero">
-  <h1>🔍 Log <span>Analyzer</span></h1>
-  <p class="subtitle">Paste network device logs to detect anomalies, classify events by severity and identify threats.</p>
-</div>
-
-<div class="main">
-  <!-- Input Panel -->
-  <div class="panel">
-    <div class="panel-title"><span>📋</span> Log Input</div>
-    <textarea id="logInput" placeholder="Paste your network device logs here...
-Example:
-Mar 15 08:01:22 router-01 %LINK-3-UPDOWN: Interface GigabitEthernet0/1, changed state to down
-Mar 15 08:02:10 router-01 %CPU-4-HIGH: CPU utilization: 92%
-Mar 15 08:03:00 router-01 Authentication failure for user admin from 192.168.1.50"></textarea>
-    <div class="btn-row">
-      <button class="btn-primary" id="analyzeBtn" onclick="analyze()">⚡ Analyze Logs</button>
-      <button class="btn-secondary" onclick="loadSample()">Load Sample</button>
-      <button class="btn-secondary" onclick="clearAll()">Clear</button>
+  <div class="topbar">
+    <a class="top-link" href="https://github.com/efrabuilder/log-analyzer" target="_blank" data-i18n="back_link">← github.com/efrabuilder/log-analyzer</a>
+    <div class="top-controls">
+      <button class="ctrl-btn" id="lang-toggle" type="button">ES</button>
+      <button class="ctrl-btn" id="theme-toggle" type="button">☾</button>
     </div>
   </div>
 
-  <!-- Results Panel -->
-  <div class="panel">
-    <div class="panel-title"><span>📊</span> Results</div>
-    <div id="results">
-      <div class="empty">Paste logs and click Analyze to see results.</div>
+  <div class="brand-row"><span class="dot"></span><h1>Log Analyzer</h1></div>
+  <p class="sub" data-i18n="subtitle">Paste or upload network device logs to detect anomalies against configurable thresholds.</p>
+
+  <div class="card">
+    <h2 data-i18n="input_title">Log data input</h2>
+    <textarea id="log-input" data-i18n-placeholder="input_placeholder" placeholder="Paste router / switch / firewall log lines here..."></textarea>
+    <input type="file" id="file-input" accept=".log,.txt" style="display:none;">
+    <div class="actions-row">
+      <button class="btn btn-primary" id="analyze-btn" data-i18n="btn_analyze">▶ Analyze logs</button>
+      <button class="btn btn-outline" id="upload-btn" data-i18n="btn_upload">Upload .log file</button>
+      <button class="btn btn-outline" id="sample-btn" data-i18n="btn_sample">Load sample logs</button>
+      <button class="btn btn-outline" id="clear-btn" data-i18n="btn_clear">Clear</button>
     </div>
   </div>
+
+  <p class="placeholder-msg" id="placeholder-msg" data-i18n="placeholder_msg">Paste log lines and click Analyze logs to see results.</p>
+  <p class="error-msg hidden" id="error-msg"></p>
+
+  <div id="results" class="hidden">
+
+    <div class="card">
+      <h2 data-i18n="summary_title">Summary</h2>
+      <div class="ticket" id="ticket"></div>
+    </div>
+
+    <div class="card">
+      <h2 data-i18n="thresh_title">Detection thresholds</h2>
+      <div class="thresh-grid" id="thresh-grid"></div>
+      <div class="actions-row">
+        <button class="btn btn-outline" id="reapply-btn" data-i18n="btn_reapply">Reapply thresholds</button>
+      </div>
+    </div>
+
+    <div class="card">
+      <h2 data-i18n="anomalies_title">Anomalies</h2>
+      <div id="anomaly-list" class="anomaly-list"></div>
+    </div>
+
+    <div class="card">
+      <h2 data-i18n="charts_title">Event breakdown</h2>
+      <div class="charts-grid">
+        <div class="chart-box"><h3 data-i18n="chart_bar">Events by type</h3><canvas id="chart-bar"></canvas></div>
+        <div class="chart-box"><h3 data-i18n="chart_pie">Severity distribution</h3><canvas id="chart-pie"></canvas></div>
+      </div>
+    </div>
+
+    <div class="card">
+      <h2><span data-i18n="events_title">Parsed events</span> <span class="n" id="events-count-label"></span></h2>
+      <div class="table-scroll"><table class="preview" id="events-table"></table></div>
+    </div>
+
+    <div class="card">
+      <h2 data-i18n="email_title">Email alert preview</h2>
+      <div class="email-preview" id="email-preview"></div>
+      <div class="actions-row">
+        <button class="btn btn-outline" id="copy-email-btn" data-i18n="btn_copy">Copy alert text</button>
+      </div>
+    </div>
+
+    <div class="card">
+      <h2 data-i18n="export_title">Export report</h2>
+      <div class="actions-row">
+        <button class="btn btn-primary" id="download-xlsx" data-i18n="btn_xlsx">⬇ Download Excel report (.xlsx)</button>
+      </div>
+    </div>
+
+  </div>
+
+  <footer>
+    <span data-i18n="footer_built">Built by Efraín Rojas Artavia</span> · <a href="https://github.com/efrabuilder/log-analyzer" target="_blank" data-i18n="footer_source">source on GitHub</a>
+  </footer>
+
 </div>
 
 <script>
-async function analyze() {
-  const text = document.getElementById('logInput').value.trim();
-  if (!text) { alert('Please paste some log text first.'); return; }
+(function(){
 
-  const btn = document.getElementById('analyzeBtn');
-  btn.disabled = true;
-  btn.textContent = 'Analyzing...';
-  document.getElementById('results').innerHTML = '<div class="loading">⚡ Analyzing logs...</div>';
+// Todo el parsing de logs vive en el backend (patterns.py / app.py) — este
+// frontend solo llama a la API y renderiza. Así CLI y web nunca divergen.
 
-  try {
-    const res = await fetch('/api/analyze', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ log_text: text })
-    });
-    const data = await res.json();
-    renderResults(data);
-  } catch(e) {
-    document.getElementById('results').innerHTML = '<div class="empty">Error analyzing logs. Please try again.</div>';
-  } finally {
-    btn.disabled = false;
-    btn.textContent = '⚡ Analyze Logs';
+var I18N = {
+  en: {
+    back_link: "← github.com/efrabuilder/log-analyzer",
+    subtitle: "Paste or upload network device logs to detect anomalies against configurable thresholds.",
+    input_title: "Log data input",
+    input_placeholder: "Paste router / switch / firewall log lines here...",
+    btn_analyze: "▶ Analyze logs",
+    btn_upload: "Upload .log file",
+    btn_sample: "Load sample logs",
+    btn_clear: "Clear",
+    btn_reapply: "Reapply thresholds",
+    btn_copy: "Copy alert text",
+    btn_xlsx: "⬇ Download Excel report (.xlsx)",
+    placeholder_msg: "Paste log lines and click Analyze logs to see results.",
+    summary_title: "Summary",
+    thresh_title: "Detection thresholds",
+    anomalies_title: "Anomalies",
+    charts_title: "Event breakdown",
+    chart_bar: "Events by type",
+    chart_pie: "Severity distribution",
+    events_title: "Parsed events",
+    email_title: "Email alert preview",
+    export_title: "Export report",
+    footer_built: "Built by Efraín Rojas Artavia",
+    footer_source: "source on GitHub",
+    no_data: "No recognizable log lines found in the pasted text.",
+    fetch_error: "Could not reach the analyzer backend. Please try again.",
+    lbl_lines: "Log lines analyzed",
+    lbl_total_events: "Total events",
+    lbl_critical: "CRITICAL",
+    lbl_warning: "WARNING",
+    lbl_error: "ERROR",
+    lbl_anomalies: "Anomalies detected",
+    lbl_generated: "Generated",
+    no_anomalies: "No anomalies — every event type is under its threshold.",
+    occurred: "occurred",
+    times: "x",
+    threshold_word: "threshold",
+    col_time: "Timestamp",
+    col_type: "Event type",
+    col_severity: "Severity",
+    col_line: "Raw line",
+    email_subject: "Subject: [Log Analyzer] anomalies detected",
+    email_intro: "The following anomalies were detected during the latest run:",
+    email_none: "No anomalies were detected during the latest run.",
+    thresh_labels: {
+      interface_down:"Interface down", high_cpu:"High CPU", authentication_failure:"Auth failures",
+      link_flap:"Link flap", memory_warning:"Memory warning", ospf_neighbor_down:"OSPF neighbor down",
+      bgp_session_drop:"BGP session drop", error_generic:"Generic error"
+    },
+    copied: "Copied"
+  },
+  es: {
+    back_link: "← github.com/efrabuilder/log-analyzer",
+    subtitle: "Pega o sube logs de dispositivos de red para detectar anomalías según umbrales configurables.",
+    input_title: "Entrada de datos de log",
+    input_placeholder: "Pega aquí líneas de log de routers, switches o firewalls...",
+    btn_analyze: "▶ Analizar logs",
+    btn_upload: "Subir archivo .log",
+    btn_sample: "Cargar logs de ejemplo",
+    btn_clear: "Limpiar",
+    btn_reapply: "Reaplicar umbrales",
+    btn_copy: "Copiar texto de alerta",
+    btn_xlsx: "⬇ Descargar reporte Excel (.xlsx)",
+    placeholder_msg: "Pega líneas de log y haz clic en Analizar logs para ver resultados.",
+    summary_title: "Resumen",
+    thresh_title: "Umbrales de detección",
+    anomalies_title: "Anomalías",
+    charts_title: "Desglose de eventos",
+    chart_bar: "Eventos por tipo",
+    chart_pie: "Distribución por severidad",
+    events_title: "Eventos detectados",
+    email_title: "Vista previa de alerta por correo",
+    export_title: "Exportar reporte",
+    footer_built: "Creado por Efraín Rojas Artavia",
+    footer_source: "código en GitHub",
+    no_data: "No se encontraron líneas de log reconocibles en el texto pegado.",
+    fetch_error: "No se pudo contactar al backend del analizador. Intenta de nuevo.",
+    lbl_lines: "Líneas de log analizadas",
+    lbl_total_events: "Total de eventos",
+    lbl_critical: "CRITICAL",
+    lbl_warning: "WARNING",
+    lbl_error: "ERROR",
+    lbl_anomalies: "Anomalías detectadas",
+    lbl_generated: "Generado",
+    no_anomalies: "Sin anomalías — todos los tipos de evento están bajo su umbral.",
+    occurred: "ocurrió",
+    times: "x",
+    threshold_word: "umbral",
+    col_time: "Fecha/hora",
+    col_type: "Tipo de evento",
+    col_severity: "Severidad",
+    col_line: "Línea original",
+    email_subject: "Asunto: [Log Analyzer] anomalías detectadas",
+    email_intro: "Se detectaron las siguientes anomalías en la última corrida:",
+    email_none: "No se detectaron anomalías en la última corrida.",
+    thresh_labels: {
+      interface_down:"Interfaz caída", high_cpu:"CPU alta", authentication_failure:"Fallos de autenticación",
+      link_flap:"Link flap", memory_warning:"Aviso de memoria", ospf_neighbor_down:"Vecino OSPF caído",
+      bgp_session_drop:"Caída de sesión BGP", error_generic:"Error genérico"
+    },
+    copied: "Copiado"
   }
+};
+
+var currentLang = 'en';
+var langBtn = document.getElementById('lang-toggle');
+var themeBtn = document.getElementById('theme-toggle');
+
+var THRESH_ORDER = ['interface_down','high_cpu','authentication_failure','link_flap',
+                     'memory_warning','ospf_neighbor_down','bgp_session_drop','error_generic'];
+var DEFAULT_THRESH = {};   // se llena desde /api/config al cargar la página
+var SEVERITY = {};         // idem
+var thresholds = {};
+
+var events = [];
+var totalLines = 0;
+var charts = {};
+
+function t(key){ return I18N[currentLang][key]; }
+
+function applyLang(lang){
+  currentLang = lang;
+  document.querySelectorAll('[data-i18n]').forEach(function(el){
+    var key = el.getAttribute('data-i18n');
+    var val = I18N[lang][key];
+    if(val !== undefined) el.textContent = val;
+  });
+  document.querySelectorAll('[data-i18n-placeholder]').forEach(function(el){
+    var key = el.getAttribute('data-i18n-placeholder');
+    var val = I18N[lang][key];
+    if(val !== undefined) el.placeholder = val;
+  });
+  langBtn.textContent = lang === 'en' ? 'ES' : 'EN';
+  document.documentElement.setAttribute('lang', lang);
+  if(events.length){ buildThresholdInputs(); renderAll(); }
 }
 
-function renderResults(data) {
-  const { stats, anomalies, events } = data;
-  let html = `
-    <div class="stats-grid">
-      <div class="stat-card stat-total">
-        <div class="stat-val">${stats.total}</div>
-        <div class="stat-lbl">Total Events</div>
-      </div>
-      <div class="stat-card stat-critical">
-        <div class="stat-val">${stats.critical}</div>
-        <div class="stat-lbl">Critical</div>
-      </div>
-      <div class="stat-card stat-warning">
-        <div class="stat-val">${stats.warning}</div>
-        <div class="stat-lbl">Warnings</div>
-      </div>
-      <div class="stat-card stat-anomaly">
-        <div class="stat-val">${stats.anomalies_count}</div>
-        <div class="stat-lbl">Anomalies</div>
-      </div>
-    </div>`;
+function applyTheme(theme){
+  document.documentElement.setAttribute('data-theme', theme);
+  themeBtn.textContent = theme === 'dark' ? '☾' : '☀';
+  if(events.length){ renderCharts(); }
+}
 
-  if (anomalies.length > 0) {
-    html += `<div style="font-weight:600;font-size:13px;margin-bottom:10px;color:#f0eee8;">⚠ Anomalies Detected</div>`;
-    anomalies.forEach(a => {
-      html += `<div class="anomaly-item ${a.severity}">
-        <div class="anomaly-msg">${a.message}</div>
-        <div class="anomaly-sub">Severity: ${a.severity} · Threshold: ${a.threshold}</div>
-      </div>`;
-    });
-  } else {
-    html += `<div class="anomaly-item" style="border-color:rgba(52,211,153,0.25);background:rgba(52,211,153,0.05);">
-      <div class="anomaly-msg" style="color:#34d399;">✓ No anomalies detected</div>
-    </div>`;
-  }
+langBtn.addEventListener('click', function(){
+  applyLang(currentLang === 'en' ? 'es' : 'en');
+});
+themeBtn.addEventListener('click', function(){
+  var cur = document.documentElement.getAttribute('data-theme');
+  applyTheme(cur === 'dark' ? 'light' : 'dark');
+});
 
-  html += `<div style="font-weight:600;font-size:13px;margin:14px 0 10px;color:#f0eee8;">📋 Events (${events.length})</div>
-    <div class="events-list">`;
+document.getElementById('upload-btn').addEventListener('click', function(){
+  document.getElementById('file-input').click();
+});
+document.getElementById('file-input').addEventListener('change', function(e){
+  var file = e.target.files[0];
+  if(!file) return;
+  var reader = new FileReader();
+  reader.onload = function(ev){
+    document.getElementById('log-input').value = ev.target.result;
+    analyze();
+  };
+  reader.readAsText(file);
+  e.target.value = '';
+});
+document.getElementById('sample-btn').addEventListener('click', function(){
+  fetch('/api/sample').then(function(r){ return r.json(); }).then(function(data){
+    document.getElementById('log-input').value = data.log_text;
+    analyze();
+  }).catch(showFetchError);
+});
+document.getElementById('clear-btn').addEventListener('click', function(){
+  document.getElementById('log-input').value = '';
+  events = []; totalLines = 0;
+  document.getElementById('results').classList.add('hidden');
+  document.getElementById('placeholder-msg').classList.remove('hidden');
+  document.getElementById('error-msg').classList.add('hidden');
+});
+document.getElementById('analyze-btn').addEventListener('click', analyze);
+document.getElementById('reapply-btn').addEventListener('click', function(){
+  readThresholdInputs();
+  renderAll();
+});
 
-  if (events.length === 0) {
-    html += `<div class="empty">No events matched known patterns.</div>`;
-  } else {
-    events.slice(0, 50).forEach(e => {
-      html += `<div class="event-item ${e.severity}">
-        <div class="event-type">${e.event_type.replace(/_/g,' ').replace(/\b\w/g,c=>c.toUpperCase())}
-          <span class="badge badge-${e.severity}">${e.severity}</span>
-        </div>
-        <div class="event-line">${e.raw_line}</div>
-      </div>`;
-    });
-    if (events.length > 50) {
-      html += `<div class="empty">...and ${events.length - 50} more events</div>`;
+function showFetchError(){
+  document.getElementById('error-msg').textContent = t('fetch_error');
+  document.getElementById('error-msg').classList.remove('hidden');
+}
+
+function analyze(){
+  var text = document.getElementById('log-input').value;
+  var lines = text.split('\n').map(function(l){return l.trim();}).filter(function(l){return l.length;});
+  document.getElementById('error-msg').classList.add('hidden');
+  if(!lines.length){ alert(t('no_data')); return; }
+
+  totalLines = lines.length;
+
+  fetch('/api/analyze', {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({ log_text: text })
+  }).then(function(r){
+    if(!r.ok){ throw new Error('bad status'); }
+    return r.json();
+  }).then(function(data){
+    events = data.events || [];
+    if(!events.length){ alert(t('no_data')); return; }
+
+    thresholds = Object.assign({}, DEFAULT_THRESH);
+    buildThresholdInputs();
+    renderAll();
+
+    document.getElementById('placeholder-msg').classList.add('hidden');
+    document.getElementById('results').classList.remove('hidden');
+    document.getElementById('results').scrollIntoView({behavior:'smooth', block:'start'});
+  }).catch(showFetchError);
+}
+
+function countByType(){
+  var counts = {};
+  events.forEach(function(e){ counts[e.event_type] = (counts[e.event_type]||0) + 1; });
+  return counts;
+}
+
+function buildThresholdInputs(){
+  var counts = countByType();
+  var grid = document.getElementById('thresh-grid');
+  var labels = t('thresh_labels');
+  grid.innerHTML = THRESH_ORDER.filter(function(type){ return counts[type] !== undefined; }).map(function(type){
+    return '<div class="thresh-field">' +
+      '<label>' + labels[type] + ' (' + counts[type] + ')</label>' +
+      '<input type="number" min="1" step="1" id="th-' + type + '" value="' + thresholds[type] + '">' +
+    '</div>';
+  }).join('');
+}
+
+function readThresholdInputs(){
+  Object.keys(thresholds).forEach(function(type){
+    var el = document.getElementById('th-' + type);
+    if(el){
+      var v = parseInt(el.value,10);
+      if(!isNaN(v) && v > 0) thresholds[type] = v;
     }
+  });
+}
+
+function sevClass(sev){
+  if(sev === 'CRITICAL') return 'critical';
+  if(sev === 'ERROR') return 'error';
+  return 'warning';
+}
+function sevLabel(sev){
+  if(sev === 'CRITICAL') return t('lbl_critical');
+  if(sev === 'ERROR') return t('lbl_error');
+  return t('lbl_warning');
+}
+
+function getAnomalies(){
+  var counts = countByType();
+  var anomalies = [];
+  Object.keys(counts).forEach(function(type){
+    if(thresholds[type] !== undefined && counts[type] >= thresholds[type]){
+      anomalies.push({ type:type, count:counts[type], threshold:thresholds[type], severity:SEVERITY[type] || 'WARNING' });
+    }
+  });
+  var rank = {CRITICAL:0, ERROR:1, WARNING:2};
+  anomalies.sort(function(a,b){
+    if(a.severity === b.severity) return b.count - a.count;
+    return (rank[a.severity]||3) - (rank[b.severity]||3);
+  });
+  return anomalies;
+}
+
+function fmtDate(){
+  return new Date().toLocaleString(currentLang === 'es' ? 'es-CR' : 'en-US');
+}
+
+function renderAll(){
+  renderSummary();
+  renderAnomalies();
+  renderCharts();
+  renderEventsTable();
+  renderEmail();
+}
+
+function renderSummary(){
+  var anomalies = getAnomalies();
+  var critical = events.filter(function(e){return e.severity==='CRITICAL';}).length;
+  var warning = events.filter(function(e){return e.severity==='WARNING';}).length;
+  var html =
+    '<div class="tline"><span>' + t('lbl_lines') + '</span><b>' + totalLines + '</b></div>' +
+    '<div class="tline"><span>' + t('lbl_total_events') + '</span><b>' + events.length + '</b></div>' +
+    '<div class="tline"><span>' + t('lbl_critical') + '</span><b>' + critical + '</b></div>' +
+    '<div class="tline"><span>' + t('lbl_warning') + '</span><b>' + warning + '</b></div>' +
+    '<div class="tline"><span>' + t('lbl_anomalies') + '</span><b>' + anomalies.length + '</b></div>' +
+    '<div class="tline"><span>' + t('lbl_generated') + '</span><b>' + fmtDate() + '</b></div>';
+  document.getElementById('ticket').innerHTML = html;
+}
+
+function renderAnomalies(){
+  var anomalies = getAnomalies();
+  var labels = t('thresh_labels');
+  var el = document.getElementById('anomaly-list');
+  if(!anomalies.length){
+    el.innerHTML = '<div class="no-anomalies">' + t('no_anomalies') + '</div>';
+    return;
   }
-  html += '</div>';
-  document.getElementById('results').innerHTML = html;
+  el.innerHTML = anomalies.map(function(a){
+    return '<div class="anomaly-row">' +
+      '<span class="tag tag-' + sevClass(a.severity) + '">' + sevLabel(a.severity) + '</span>' +
+      '<span class="desc">' + labels[a.type] + ' ' + t('occurred') + ' ' + a.count + t('times') + '</span>' +
+      '<span class="thresh">' + t('threshold_word') + ': ' + a.threshold + '</span>' +
+    '</div>';
+  }).join('');
 }
 
-async function loadSample() {
-  const res = await fetch('/api/sample');
-  const data = await res.json();
-  document.getElementById('logInput').value = data.log_text;
+function themeInk(){
+  var dark = document.documentElement.getAttribute('data-theme') !== 'light';
+  return dark
+    ? { text:'#E3E8EF', muted:'#7D8899', grid:'rgba(255,255,255,.06)' }
+    : { text:'#101720', muted:'#5B6472', grid:'rgba(16,23,32,.08)' };
 }
 
-function clearAll() {
-  document.getElementById('logInput').value = '';
-  document.getElementById('results').innerHTML = '<div class="empty">Paste logs and click Analyze to see results.</div>';
+function renderCharts(){
+  var counts = countByType();
+  var labels = t('thresh_labels');
+  var order = Object.keys(counts);
+  var ink = themeInk();
+  var critical = '#F0546B', warning = '#E8A33D', errColor = '#5B8DEF';
+
+  Object.keys(charts).forEach(function(k){ charts[k].destroy(); });
+
+  charts.bar = new Chart(document.getElementById('chart-bar'), {
+    type:'bar',
+    data:{
+      labels: order.map(function(k){return labels[k] || k;}),
+      datasets:[{
+        data: order.map(function(k){return counts[k];}),
+        backgroundColor: order.map(function(k){
+          var s = SEVERITY[k];
+          return s === 'CRITICAL' ? critical : (s === 'ERROR' ? errColor : warning);
+        })
+      }]
+    },
+    options:{
+      plugins:{ legend:{ display:false } },
+      scales:{
+        x:{ ticks:{ color:ink.muted, font:{ family:'IBM Plex Mono', size:10 } }, grid:{ color:ink.grid } },
+        y:{ ticks:{ color:ink.muted, font:{ family:'IBM Plex Mono', size:10 } }, grid:{ color:ink.grid }, beginAtZero:true }
+      }
+    }
+  });
+
+  var critCount = events.filter(function(e){return e.severity==='CRITICAL';}).length;
+  var warnCount = events.filter(function(e){return e.severity==='WARNING';}).length;
+  var errCount = events.filter(function(e){return e.severity==='ERROR';}).length;
+  charts.pie = new Chart(document.getElementById('chart-pie'), {
+    type:'doughnut',
+    data:{
+      labels:[t('lbl_critical'), t('lbl_warning'), t('lbl_error')],
+      datasets:[{ data:[critCount, warnCount, errCount], backgroundColor:[critical, warning, errColor] }]
+    },
+    options:{
+      plugins:{ legend:{ position:'bottom', labels:{ color:ink.text, font:{ family:'IBM Plex Mono', size:11 } } } }
+    }
+  });
 }
+
+function renderEventsTable(){
+  var labels = t('thresh_labels');
+  document.getElementById('events-count-label').textContent = '(' + events.length + ')';
+  var rows = events.slice(0, 40);
+  var html = '<thead><tr><th>' + t('col_time') + '</th><th>' + t('col_type') + '</th><th>' + t('col_severity') + '</th><th>' + t('col_line') + '</th></tr></thead><tbody>';
+  rows.forEach(function(e){
+    html += '<tr><td>' + (e.timestamp||'—') + '</td><td>' + (labels[e.event_type]||e.event_type) + '</td><td><span class="tag tag-' + sevClass(e.severity) + '">' + sevLabel(e.severity) + '</span></td><td>' + escapeHtml(e.raw_line) + '</td></tr>';
+  });
+  html += '</tbody>';
+  document.getElementById('events-table').innerHTML = html;
+}
+
+function escapeHtml(s){
+  return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+}
+
+function renderEmail(){
+  var anomalies = getAnomalies();
+  var labels = t('thresh_labels');
+  var lines = [t('email_subject'), ''];
+  if(!anomalies.length){
+    lines.push(t('email_none'));
+  } else {
+    lines.push(t('email_intro'), '');
+    anomalies.forEach(function(a){
+      lines.push('[' + sevLabel(a.severity) + '] ' + labels[a.type] + ' ' + t('occurred') + ' ' + a.count + t('times') + ' (' + t('threshold_word') + ': ' + a.threshold + ')');
+    });
+  }
+  document.getElementById('email-preview').textContent = lines.join('\n');
+}
+
+document.getElementById('copy-email-btn').addEventListener('click', function(){
+  var text = document.getElementById('email-preview').textContent;
+  navigator.clipboard && navigator.clipboard.writeText(text).then(function(){
+    var btn = document.getElementById('copy-email-btn');
+    var original = btn.textContent;
+    btn.textContent = t('copied');
+    setTimeout(function(){ btn.textContent = original; }, 1500);
+  });
+});
+
+document.getElementById('download-xlsx').addEventListener('click', function(){
+  var labels = t('thresh_labels');
+  var anomalies = getAnomalies();
+
+  var eventsSheet = XLSX.utils.json_to_sheet(events.map(function(e){
+    return {
+      Timestamp: e.timestamp, EventType: labels[e.event_type] || e.event_type,
+      Severity: e.severity, Line: e.raw_line
+    };
+  }));
+  var anomaliesSheet = XLSX.utils.json_to_sheet(anomalies.map(function(a){
+    return {
+      EventType: labels[a.type] || a.type, Severity: a.severity, Occurrences: a.count, Threshold: a.threshold
+    };
+  }));
+
+  var wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, anomaliesSheet, 'Anomalies');
+  XLSX.utils.book_append_sheet(wb, eventsSheet, 'Events');
+  XLSX.writeFile(wb, 'log-analyzer-report.xlsx');
+});
+
+// Cargar umbrales/severidad por defecto desde el backend antes de habilitar
+// el análisis, para que no haya una copia hardcodeada divergente en el cliente.
+fetch('/api/config').then(function(r){ return r.json(); }).then(function(cfg){
+  THRESH_ORDER.forEach(function(k){
+    if(cfg.thresholds[k] !== undefined) DEFAULT_THRESH[k] = cfg.thresholds[k];
+  });
+  SEVERITY = cfg.severity || {};
+}).catch(showFetchError);
+
+applyLang('en');
+applyTheme('dark');
+
+})();
 </script>
 </body>
 </html>

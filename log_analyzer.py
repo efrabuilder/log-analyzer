@@ -4,7 +4,6 @@ CLI tool that parses network device logs, detects anomalies,
 and sends email alerts when thresholds are exceeded.
 """
 
-import re
 import smtplib
 import logging
 import argparse
@@ -14,11 +13,11 @@ from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
 from collections import defaultdict
 
-import pandas as pd
 from openpyxl import Workbook
 from openpyxl.styles import Font, PatternFill, Alignment
 from openpyxl.utils import get_column_letter
 
+from patterns import PATTERNS, SEVERITY
 from config import CONFIG
 
 # ── Logging ────────────────────────────────────────────────────────────────────
@@ -35,63 +34,8 @@ log = logging.getLogger(__name__)
 OUTPUT_DIR = Path("output")
 OUTPUT_DIR.mkdir(exist_ok=True)
 
-# ── Log Patterns ───────────────────────────────────────────────────────────────
-PATTERNS = {
-    "interface_down": re.compile(
-        r"(?P<timestamp>\w{3}\s+\d+\s+\d{2}:\d{2}:\d{2}).*"
-        r"(?P<device>\S+).*"
-        r"(?:interface|line protocol|Interface)\s+(?P<interface>\S+).*"
-        r"(?:down|DOWN|went down)",
-        re.IGNORECASE
-    ),
-    "high_cpu": re.compile(
-        r"(?P<timestamp>\w{3}\s+\d+\s+\d{2}:\d{2}:\d{2}).*"
-        r"CPU\s+(?:utilization|usage)[:\s]+(?P<value>\d+)%",
-        re.IGNORECASE
-    ),
-    "authentication_failure": re.compile(
-        r"(?P<timestamp>\w{3}\s+\d+\s+\d{2}:\d{2}:\d{2}).*"
-        r"(?:authentication failure|login failed|invalid password|auth fail)"
-        r".*(?:user|from)?\s*(?P<user>\S+)?",
-        re.IGNORECASE
-    ),
-    "link_flap": re.compile(
-        r"(?P<timestamp>\w{3}\s+\d+\s+\d{2}:\d{2}:\d{2}).*"
-        r"(?P<interface>\S+).*(?:changed state|flap|up/down)",
-        re.IGNORECASE
-    ),
-    "memory_warning": re.compile(
-        r"(?P<timestamp>\w{3}\s+\d+\s+\d{2}:\d{2}:\d{2}).*"
-        r"(?:memory|mem)\s+(?:warning|critical|low|usage)[:\s]+(?P<value>\d+)%",
-        re.IGNORECASE
-    ),
-    "ospf_neighbor_down": re.compile(
-        r"(?P<timestamp>\w{3}\s+\d+\s+\d{2}:\d{2}:\d{2}).*"
-        r"OSPF.*neighbor.*(?:down|dead|timeout)",
-        re.IGNORECASE
-    ),
-    "bgp_session_drop": re.compile(
-        r"(?P<timestamp>\w{3}\s+\d+\s+\d{2}:\d{2}:\d{2}).*"
-        r"BGP.*(?:session|peer).*(?:dropped|down|reset|closed)",
-        re.IGNORECASE
-    ),
-    "error_generic": re.compile(
-        r"(?P<timestamp>\w{3}\s+\d+\s+\d{2}:\d{2}:\d{2}).*"
-        r"\b(?:ERROR|CRITICAL|FATAL|EMERG|ALERT)\b",
-        re.IGNORECASE
-    ),
-}
-
-SEVERITY = {
-    "interface_down":       "CRITICAL",
-    "high_cpu":             "WARNING",
-    "authentication_failure": "WARNING",
-    "link_flap":            "WARNING",
-    "memory_warning":       "WARNING",
-    "ospf_neighbor_down":   "CRITICAL",
-    "bgp_session_drop":     "CRITICAL",
-    "error_generic":        "ERROR",
-}
+# Patrones, severidad y umbrales por defecto viven en patterns.py
+# (fuente única compartida con app.py) para que CLI y web nunca diverjan.
 
 
 # ── Parser ─────────────────────────────────────────────────────────────────────

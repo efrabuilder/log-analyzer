@@ -1,76 +1,15 @@
 # app.py — Log Analyzer Web Interface
 # Efraín Rojas Artavia
 
+import os
 from flask import Flask, render_template, request, jsonify
-import re
-from datetime import datetime
 from collections import defaultdict
+
+from patterns import PATTERNS, SEVERITY, DEFAULT_THRESHOLDS as THRESHOLDS
 
 app = Flask(__name__)
 
-# ── Log Patterns ───────────────────────────────────────────────────────────────
-PATTERNS = {
-    "interface_down": re.compile(
-        r"(?P<timestamp>\w{3}\s+\d+\s+\d{2}:\d{2}:\d{2}).*"
-        r"(?:interface|line protocol|Interface)\s+(?P<interface>\S+).*"
-        r"(?:down|DOWN|went down)", re.IGNORECASE
-    ),
-    "high_cpu": re.compile(
-        r"(?P<timestamp>\w{3}\s+\d+\s+\d{2}:\d{2}:\d{2}).*"
-        r"CPU\s+(?:utilization|usage)[:\s]+(?P<value>\d+)%", re.IGNORECASE
-    ),
-    "authentication_failure": re.compile(
-        r"(?P<timestamp>\w{3}\s+\d+\s+\d{2}:\d{2}:\d{2}).*"
-        r"(?:authentication failure|login failed|invalid password|auth fail)",
-        re.IGNORECASE
-    ),
-    "link_flap": re.compile(
-        r"(?P<timestamp>\w{3}\s+\d+\s+\d{2}:\d{2}:\d{2}).*"
-        r"(?P<interface>\S+).*(?:changed state|flap|up/down)", re.IGNORECASE
-    ),
-    "memory_warning": re.compile(
-        r"(?P<timestamp>\w{3}\s+\d+\s+\d{2}:\d{2}:\d{2}).*"
-        r"(?:memory|mem)\s+(?:warning|critical|low|usage)[:\s]+(?P<value>\d+)%",
-        re.IGNORECASE
-    ),
-    "ospf_neighbor_down": re.compile(
-        r"(?P<timestamp>\w{3}\s+\d+\s+\d{2}:\d{2}:\d{2}).*"
-        r"OSPF.*neighbor.*(?:down|dead|timeout)", re.IGNORECASE
-    ),
-    "bgp_session_drop": re.compile(
-        r"(?P<timestamp>\w{3}\s+\d+\s+\d{2}:\d{2}:\d{2}).*"
-        r"BGP.*(?:session|peer).*(?:dropped|down|reset|closed)", re.IGNORECASE
-    ),
-    "error_generic": re.compile(
-        r"(?P<timestamp>\w{3}\s+\d+\s+\d{2}:\d{2}:\d{2}).*"
-        r"\b(?:ERROR|CRITICAL|FATAL|EMERG|ALERT)\b", re.IGNORECASE
-    ),
-}
-
-SEVERITY = {
-    "interface_down":         "CRITICAL",
-    "high_cpu":               "WARNING",
-    "authentication_failure": "WARNING",
-    "link_flap":              "WARNING",
-    "memory_warning":         "WARNING",
-    "ospf_neighbor_down":     "CRITICAL",
-    "bgp_session_drop":       "CRITICAL",
-    "error_generic":          "ERROR",
-}
-
-THRESHOLDS = {
-    "interface_down":         2,
-    "high_cpu":               3,
-    "authentication_failure": 5,
-    "link_flap":              3,
-    "memory_warning":         2,
-    "ospf_neighbor_down":     1,
-    "bgp_session_drop":       1,
-    "error_generic":          10,
-    "default":                5,
-    "high_cpu_pct":           85,
-    "memory_warning_pct":     85,
-}
+MAX_LOG_LINES = 20000  # evita que un pegado gigante congele una petición
 
 SAMPLE_LOGS = """Mar 15 08:01:22 router-cr-01 %LINK-3-UPDOWN: Interface GigabitEthernet0/1, changed state to down
 Mar 15 08:01:25 router-cr-01 %LINK-3-UPDOWN: Interface GigabitEthernet0/1, changed state to up
@@ -100,7 +39,8 @@ Mar 15 08:22:00 switch-floor2 ERROR: VLAN database corruption detected"""
 
 def parse_logs(text):
     events = []
-    for lineno, line in enumerate(text.splitlines(), 1):
+    lines = text.splitlines()[:MAX_LOG_LINES]
+    for lineno, line in enumerate(lines, 1):
         line = line.strip()
         if not line:
             continue
@@ -114,6 +54,7 @@ def parse_logs(text):
                     "timestamp":  groups.get("timestamp", ""),
                     "interface":  groups.get("interface", ""),
                     "value":      groups.get("value", ""),
+                    "user":       groups.get("user", ""),
                     "raw_line":   line[:200],
                     "line_no":    lineno,
                 })
@@ -121,14 +62,15 @@ def parse_logs(text):
     return events
 
 
-def detect_anomalies(events):
+def detect_anomalies(events, thresholds=None):
+    thresholds = thresholds or THRESHOLDS
     anomalies = []
     counts = defaultdict(int)
     for e in events:
         counts[e["event_type"]] += 1
 
     for event_type, count in counts.items():
-        threshold = THRESHOLDS.get(event_type, THRESHOLDS["default"])
+        threshold = thresholds.get(event_type, thresholds.get("default", 5))
         if count >= threshold:
             anomalies.append({
                 "event_type": event_type,
@@ -142,7 +84,7 @@ def detect_anomalies(events):
         if e["event_type"] in ("high_cpu", "memory_warning") and e.get("value"):
             try:
                 val = int(e["value"])
-                limit = THRESHOLDS.get(e["event_type"] + "_pct", 85)
+                limit = thresholds.get(e["event_type"] + "_pct", 85)
                 if val >= limit:
                     anomalies.append({
                         "event_type": e["event_type"],
@@ -164,6 +106,24 @@ def detect_anomalies(events):
     return unique
 
 
+def _parse_thresholds_override(raw):
+    """Valida un dict de umbrales personalizados que venga del cliente.
+    Solo acepta claves conocidas y valores enteros positivos; el resto se ignora."""
+    if not isinstance(raw, dict):
+        return None
+    merged = dict(THRESHOLDS)
+    for key, value in raw.items():
+        if key not in THRESHOLDS:
+            continue
+        try:
+            ival = int(value)
+            if ival > 0:
+                merged[key] = ival
+        except (TypeError, ValueError):
+            continue
+    return merged
+
+
 # ── Routes ─────────────────────────────────────────────────────────────────────
 @app.route("/")
 def index():
@@ -172,13 +132,21 @@ def index():
 
 @app.route("/api/analyze", methods=["POST"])
 def analyze():
-    data = request.get_json()
-    log_text = data.get("log_text", "").strip()
+    data = request.get_json(silent=True)
+    if not data:
+        return jsonify({"error": "Invalid or missing JSON body"}), 400
+
+    log_text = (data.get("log_text") or "").strip()
     if not log_text:
         return jsonify({"error": "No log text provided"}), 400
 
+    if len(log_text) > 5_000_000:  # ~5 MB de texto
+        return jsonify({"error": "Log text too large (max ~5 MB)"}), 413
+
+    thresholds = _parse_thresholds_override(data.get("thresholds"))
+
     events    = parse_logs(log_text)
-    anomalies = detect_anomalies(events)
+    anomalies = detect_anomalies(events, thresholds)
 
     counts = defaultdict(int)
     for e in events:
@@ -202,5 +170,14 @@ def sample():
     return jsonify({"log_text": SAMPLE_LOGS})
 
 
+@app.route("/api/config")
+def get_config():
+    """Expone los umbrales y la severidad por defecto para que el frontend
+    no tenga que mantener una copia hardcodeada separada (single source of
+    truth = patterns.py)."""
+    return jsonify({"thresholds": THRESHOLDS, "severity": SEVERITY})
+
+
 if __name__ == "__main__":
-    app.run(debug=True)
+    debug_mode = os.environ.get("FLASK_DEBUG", "0") == "1"
+    app.run(debug=debug_mode)

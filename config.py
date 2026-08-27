@@ -1,30 +1,41 @@
 # config.py — Log Analyzer configuration
+#
+# Los umbrales viven en patterns.py (fuente única compartida con app.py).
+# Las credenciales de correo NUNCA van hardcodeadas: se leen de variables
+# de entorno (ver .env.example) para que no queden expuestas en git.
+
+import os
+from dotenv import load_dotenv
+
+from patterns import DEFAULT_THRESHOLDS
+
+load_dotenv()  # lee un archivo .env local si existe (no se sube a git)
+
+
+def _split_recipients(raw: str) -> list:
+    return [r.strip() for r in raw.split(",") if r.strip()]
+
 
 CONFIG = {
     # ── Thresholds ─────────────────────────────────────────────────────────────
-    # How many occurrences before flagging as anomaly
-    "thresholds": {
-        "interface_down":         2,
-        "high_cpu":               3,
-        "authentication_failure": 5,
-        "link_flap":              3,
-        "memory_warning":         2,
-        "ospf_neighbor_down":     1,
-        "bgp_session_drop":       1,
-        "error_generic":          10,
-        "default":                5,
-        # Percentage thresholds
-        "high_cpu_pct":           85,
-        "memory_warning_pct":     85,
-    },
+    "thresholds": DEFAULT_THRESHOLDS,
 
     # ── Email Alerts ───────────────────────────────────────────────────────────
+    # Definí estas variables en un archivo .env (ver .env.example) o en el
+    # entorno del sistema/CI. Si SMTP_SENDER o SMTP_PASSWORD no están
+    # definidas, el envío de alertas queda deshabilitado automáticamente.
     "email": {
-        "enabled":    False,           # Set True to enable
-        "sender":     "you@gmail.com",
-        "password":   "your_app_password",
-        "smtp_host":  "smtp.gmail.com",
-        "smtp_port":  587,
-        "recipients": ["noc@company.com", "admin@company.com"],
+        "enabled":    os.environ.get("EMAIL_ALERTS_ENABLED", "false").lower() == "true",
+        "sender":     os.environ.get("SMTP_SENDER", ""),
+        "password":   os.environ.get("SMTP_PASSWORD", ""),
+        "smtp_host":  os.environ.get("SMTP_HOST", "smtp.gmail.com"),
+        "smtp_port":  int(os.environ.get("SMTP_PORT", "587")),
+        "recipients": _split_recipients(os.environ.get("SMTP_RECIPIENTS", "")),
     }
 }
+
+# Si falta sender/password/recipients, no tiene sentido intentar enviar
+# aunque EMAIL_ALERTS_ENABLED esté en true — evita errores confusos en runtime.
+_email = CONFIG["email"]
+if _email["enabled"] and not (_email["sender"] and _email["password"] and _email["recipients"]):
+    _email["enabled"] = False
